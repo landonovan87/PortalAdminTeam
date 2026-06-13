@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ops Team Hub</title>
+
+<!-- ============================================================
+     CONFIGURACIÓN
+     SUPABASE_URL / SUPABASE_ANON_KEY: de Project Settings -> API.
+     El acceso ahora es con login por correo (Supabase Auth) y los
+     permisos se aplican en la base de datos según el rol de cada
+     usuario (ver supabase-auth.sql).
+     ============================================================ -->
+<script>
+  window.OTH_CONFIG = {
+    SUPABASE_URL: "https://qcdcchfqutpdgqqwzlal.supabase.co",
+    SUPABASE_ANON_KEY: "sb_publishable_6y8vjFhSvP5oimLpbJFRcQ_o1MtCl7I"
+  };
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#172033; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#0ea5e9;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --violet:#a78bfa; --slate:#64748b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  #root{min-height:100vh;}
+  .layout{display:flex;min-height:100vh;}
+  .sidebar{width:230px;background:var(--panel2);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;}
+  .brand{font-weight:700;font-size:18px;padding:8px 10px 16px;display:flex;align-items:center;gap:8px;}
+  .brand small{display:block;font-weight:400;font-size:11px;color:var(--muted);}
+  .nav-btn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:var(--muted);padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px;}
+  .nav-btn:hover{background:var(--panel);color:var(--text);}
+  .nav-btn.active{background:var(--accent2);color:#04141f;font-weight:600;}
+  .main{flex:1;padding:18px 32px 32px;max-width:1240px;width:100%;}
+  .page-title{font-size:24px;font-weight:700;margin:0 0 4px;}
+  .page-sub{color:var(--muted);margin:0 0 22px;font-size:14px;}
+  .grid{display:grid;gap:16px;}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .kpi .n{font-size:30px;font-weight:700;}
+  .kpi .l{color:var(--muted);font-size:13px;margin-top:4px;}
+  .kpi .ico{float:right;opacity:.5;}
+  .section-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 14px;flex-wrap:wrap;}
+  .btn{background:var(--accent2);color:#04141f;border:none;padding:9px 14px;border-radius:9px;font-weight:600;cursor:pointer;font-size:14px;display:inline-flex;gap:6px;align-items:center;}
+  .btn:hover{background:var(--accent);}
+  .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+  .btn.sm{padding:6px 10px;font-size:13px;}
+  .btn.danger{background:none;color:var(--red);border:1px solid transparent;padding:6px;}
+  .btn.danger:hover{background:rgba(239,68,68,.12);}
+  .search{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 12px;border-radius:9px;width:240px;font-size:14px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;border-bottom:1px solid var(--line);}
+  td{padding:11px 12px;border-bottom:1px solid var(--line);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--panel2);}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;}
+  .empty{text-align:center;color:var(--muted);padding:38px;}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:480px;max-width:100%;max-height:90vh;overflow:auto;}
+  .modal h3{margin:0 0 16px;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;}
+  .field input,.field select,.field textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 11px;border-radius:8px;font-size:14px;font-family:inherit;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+  .alert-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .alert-row:last-child{border:none;}
+  .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;}
+  .setup{max-width:620px;margin:60px auto;}
+  .setup code{background:var(--panel2);padding:2px 6px;border-radius:5px;color:var(--accent);}
+  .setup ol{line-height:1.9;}
+  .banner{background:rgba(245,158,11,.12);border:1px solid var(--amber);color:#fde68a;padding:12px 16px;border-radius:10px;margin-bottom:20px;font-size:14px;}
+  /* top bar */
+  .topbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:14px;}
+  .role-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--muted);}
+  .role-chip b{color:var(--text);}
+  .bell-wrap{position:relative;}
+  .bell-btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);width:38px;height:38px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .bell-count{position:absolute;top:-7px;right:-7px;background:var(--red);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 6px;}
+  .notif-panel{position:absolute;right:0;top:46px;width:330px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:60;max-height:420px;overflow:auto;box-shadow:0 12px 34px rgba(0,0,0,.5);}
+  .notif-panel h4{margin:6px 8px 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  /* login */
+  .login-wrap{max-width:380px;margin:90px auto;text-align:center;}
+  .login-wrap .card{padding:28px;}
+  .login-wrap input{width:100%;text-align:center;letter-spacing:.05em;}
+  /* calendario */
+  .cal-bar{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+  .cal-bar h2{margin:0;font-size:18px;text-transform:capitalize;}
+  .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
+  .cal-head div{color:var(--muted);font-size:12px;text-align:center;font-weight:600;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;min-height:96px;padding:5px;}
+  .cal-cell.off{opacity:.35;}
+  .cal-cell.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .cal-day{font-weight:700;font-size:12px;margin-bottom:4px;}
+  .cal-ev{border-radius:5px;padding:2px 6px;margin-bottom:3px;font-size:11px;color:#04141f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;}
+  .cal-ev.conflict{outline:2px solid var(--red);}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:14px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;}
+  @media(max-width:760px){
+    .layout{flex-direction:column;}
+    .sidebar{width:100%;height:auto;position:static;flex-direction:row;flex-wrap:wrap;}
+    .main{padding:14px;}
+    .cal-cell{min-height:70px;}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+const { createClient } = supabase;
+
+const cfg = window.OTH_CONFIG;
+const CONFIGURED = cfg.SUPABASE_URL && cfg.SUPABASE_URL.startsWith("http") && cfg.SUPABASE_ANON_KEY && cfg.SUPABASE_ANON_KEY.length > 20;
+const db = CONFIGURED ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+
+/* ---------- roles y permisos ---------- */
+const PERMS = {
+  "Administrador": {create:true, edit:true, del:true},
+  "Líder":         {create:true, edit:true, del:true},
+  "Miembro":       {create:true, edit:true, del:false},
+  "Solo lectura":  {create:false,edit:false,del:false},
+};
+
+/* ---------- catálogos ---------- */
+const CAT = {
+  estadoPersona: ["Activo","Inactivo"],
+  tipoPermiso: ["Vacaciones","Permiso personal","Permiso médico","Home office","Otro"],
+  estadoPermiso: ["Pendiente","Aprobado","Rechazado"],
+  tipoGuardia: ["Guardia nocturna","Guardia fin de semana","On-call","Soporte 24x7"],
+  estadoVentana: ["Programada","En ejecución","Completada","Cancelada"],
+  estadoCurso: ["Inscrito","En curso","Completado","Certificado"],
+  estadoReverso: ["Planificado","En proceso","Completado","Fallido"],
+};
+const COLOR = {
+  "Activo":"green","Inactivo":"slate",
+  "Pendiente":"amber","Aprobado":"green","Rechazado":"red",
+  "Programada":"accent","En ejecución":"amber","Completada":"green","Cancelada":"slate",
+  "Inscrito":"slate","En curso":"amber","Completado":"green","Certificado":"violet",
+  "Planificado":"slate","En proceso":"amber","Fallido":"red",
+};
+const C = {green:"var(--green)",amber:"var(--amber)",red:"var(--red)",violet:"var(--violet)",slate:"var(--slate)",accent:"var(--accent)"};
+const HEX = {green:"#22c55e",amber:"#f59e0b",red:"#ef4444",violet:"#a78bfa",slate:"#64748b",accent:"#38bdf8"};
+function Pill({v}){
+  const c = C[COLOR[v]] || "var(--slate)";
+  return <span className="pill" style={{background:c+"22",color:c}}>{v||"—"}</span>;
+}
+
+/* ---------- iconos ---------- */
+const I = {
+  dash:"M3 13h8V3H3zM13 21h8V3h-8zM3 21h8v-6H3z",
+  team:"M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21a8 8 0 0116 0",
+  leave:"M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z",
+  guard:"M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z",
+  wind:"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6",
+  course:"M22 10L12 5 2 10l10 5 10-5zM6 12v5c0 1 3 3 6 3s6-2 6-3v-5",
+  roll:"M3 12a9 9 0 109-9 9 9 0 00-6.5 2.8L3 8M3 3v5h5",
+  cal:"M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z",
+  plus:"M12 5v14M5 12h14",
+  trash:"M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14",
+  bell:"M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0",
+  out:"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
+  xls:"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6",
+  left:"M15 18l-6-6 6-6", right:"M9 18l6-6-6-6",
+};
+function Icon({d,size=18}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;}
+
+/* ---------- módulos ---------- */
+const MODULES = {
+  team:{ table:"team", label:"Equipo", icon:I.team, title:"Equipo", sub:"Registro del personal del equipo de TI",
+    cols:[["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["estado","Estado","pill"]],
+    fields:[["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
+    search:["nombre","rol","area","correo"] },
+  leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
+    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["estado","Estado","pill"],["notas","Notas"]],
+    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
+    search:["persona","tipo"] },
+  guards:{ table:"guards", label:"Guardias", icon:I.guard, title:"Guardias / On-call", sub:"Asignación de turnos de guardia y soporte",
+    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["notas","Notas"]],
+    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["notas","Notas","textarea"]],
+    search:["persona","tipo"] },
+  windows:{ table:"windows", label:"Ventanas", icon:I.wind, title:"Ventanas de mantenimiento", sub:"Planeación y seguimiento de mantenimientos",
+    cols:[["sistema","Sistema"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
+    fields:[["sistema","Sistema / servicio","text",true],["responsable","Responsable","text"],["fecha_hora","Fecha y hora","datetime-local"],["descripcion","Descripción","textarea"],["estado","Estado","select",false,CAT.estadoVentana]],
+    search:["sistema","responsable"] },
+  courses:{ table:"courses", label:"Cursos", icon:I.course, title:"Cursos", sub:"Capacitación y certificaciones del equipo",
+    cols:[["persona","Persona"],["curso","Curso"],["proveedor","Proveedor"],["fecha","Fecha"],["estado","Estado","pill"]],
+    fields:[["persona","Persona","text",true],["curso","Nombre del curso","text"],["proveedor","Proveedor","text"],["fecha","Fecha","date"],["estado","Estado","select",false,CAT.estadoCurso]],
+    search:["persona","curso","proveedor"] },
+  rollbacks:{ table:"rollbacks", label:"Reversos", icon:I.roll, title:"Reversos / Rollbacks", sub:"Registro y control de reversos de cambios o despliegues",
+    cols:[["release","Release / cambio"],["responsable","Responsable"],["fecha","Fecha"],["motivo","Motivo"],["estado","Estado","pill"],["resultado","Resultado"]],
+    fields:[["release","Release / cambio","text",true],["responsable","Responsable","text"],["fecha","Fecha","date"],["motivo","Motivo","textarea"],["resultado","Resultado","text"],["estado","Estado","select",false,CAT.estadoReverso]],
+    search:["release","responsable"] },
+};
+
+/* ---------- utilidades de fecha ---------- */
+function pd(s){ if(!s) return null; const p=String(s).slice(0,10).split("-").map(Number); return new Date(p[0],p[1]-1,p[2]); }
+function dkey(d){ return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
+function startToday(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
+function fmt(val,kind){
+  if(val===null||val===undefined||val==="") return "—";
+  if(kind==="pill") return <Pill v={val}/>;
+  if(kind==="dt"){ try{return new Date(val).toLocaleString("es",{dateStyle:"medium",timeStyle:"short"});}catch{return val;} }
+  return String(val);
+}
+function rawCell(r,col){
+  const v=r[col[0]];
+  if(v===null||v===undefined) return "";
+  if(col[2]==="dt"){ try{return new Date(v).toLocaleString("es");}catch{return String(v);} }
+  return String(v);
+}
+
+/* ---------- choques de agenda ---------- */
+function computeConflicts(data){
+  if(!data) return [];
+  const byPerson = {}; // persona -> {leave:Set, guard:Set}
+  const addDays=(persona,startS,endS,kind)=>{
+    const a=pd(startS), b=pd(endS)||pd(startS);
+    if(!a) return;
+    byPerson[persona]=byPerson[persona]||{leave:new Set(),guard:new Set()};
+    let d=new Date(a), i=0;
+    while(d<=b && i<400){ byPerson[persona][kind].add(dkey(d)); d.setDate(d.getDate()+1); i++; }
+  };
+  data.leaves.forEach(l=> l.persona && l.estado!=="Rechazado" && addDays(l.persona,l.fecha_inicio,l.fecha_fin,"leave"));
+  data.guards.forEach(g=> g.persona && addDays(g.persona,g.fecha_inicio,g.fecha_fin,"guard"));
+  const out=[];
+  Object.entries(byPerson).forEach(([persona,o])=>{
+    o.guard.forEach(k=>{ if(o.leave.has(k)){ const p=k.split("-").map(Number); out.push({date:new Date(p[0],p[1]-1,p[2]),persona}); } });
+  });
+  return out.sort((a,b)=>a.date-b.date);
+}
+
+/* ---------- notificaciones ---------- */
+function buildNotifs(data){
+  if(!data) return [];
+  const today=startToday(); const in7=new Date(today); in7.setDate(in7.getDate()+7);
+  const n=[];
+  data.windows.forEach(w=>{ const f=w.fecha_hora&&new Date(w.fecha_hora); if(f&&f>=today&&f<=in7&&w.estado!=="Cancelada") n.push(["accent",`Ventana próxima: ${w.sistema} (${f.toLocaleDateString("es",{day:"numeric",month:"short"})})`]); });
+  data.guards.forEach(g=>{ const f=pd(g.fecha_inicio); if(f&&f>=today&&f<=in7) n.push(["violet",`Guardia próxima: ${g.persona} · ${g.tipo||""}`]); });
+  data.windows.filter(w=>w.estado==="En ejecución").forEach(w=>n.push(["amber",`Ventana en ejecución: ${w.sistema}`]));
+  data.leaves.filter(l=>l.estado==="Pendiente").forEach(l=>n.push(["amber",`Permiso pendiente: ${l.persona}`]));
+  data.rollbacks.filter(r=>r.estado==="En proceso").forEach(r=>n.push(["amber",`Reverso en proceso: ${r.release}`]));
+  data.rollbacks.filter(r=>r.estado==="Fallido").forEach(r=>n.push(["red",`Reverso fallido: ${r.release}`]));
+  computeConflicts(data).forEach(c=>n.push(["red",`⚠ Choque de agenda: ${c.persona} (${c.date.toLocaleDateString("es",{day:"numeric",month:"short"})})`]));
+  const rank={red:0,amber:1,violet:2,accent:3};
+  return n.sort((a,b)=>rank[a[0]]-rank[b[0]]);
+}
+
+/* ============================================================ */
+function App(){
+  if(!CONFIGURED) return <SetupScreen/>;
+  const [session,setSession] = useState(undefined);   // undefined=cargando, null=sin sesión
+  const [role,setRole] = useState(null);
+  const [roleLoading,setRoleLoading] = useState(false);
+
+  useEffect(()=>{
+    db.auth.getSession().then(({data})=>setSession(data.session||null));
+    const {data:sub} = db.auth.onAuthStateChange((_e,s)=>setSession(s||null));
+    return ()=> sub.subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{
+    let alive=true;
+    if(session && session.user){
+      setRoleLoading(true);
+      db.from("profiles").select("role").eq("id",session.user.id).single()
+        .then(({data})=>{ if(!alive) return; setRole(data && data.role ? data.role : "Solo lectura"); setRoleLoading(false); });
+    } else { setRole(null); }
+    return ()=>{ alive=false; };
+  },[session]);
+
+  if(session===undefined) return <Splash text="Cargando…"/>;
+  if(!session) return <Login/>;
+  if(roleLoading || !role) return <Splash text="Cargando perfil…"/>;
+  return <Shell role={role} email={session.user.email} onLogout={()=>db.auth.signOut()}/>;
+}
+
+function Splash({text}){
+  return <div className="main"><p className="page-sub" style={{marginTop:70,textAlign:"center"}}>{text}</p></div>;
+}
+
+function Shell({role,email,onLogout}){
+  const perm = PERMS[role];
+  const isAdmin = role==="Administrador";
+  const [view,setView] = useState("dashboard");
+  const [reloadKey,setReloadKey] = useState(0);
+  const bump = ()=>setReloadKey(k=>k+1);
+  const {data,err} = useAllData(reloadKey);
+  const navItems = [
+    ["dashboard","Dashboard",I.dash],
+    ...Object.entries(MODULES).map(([k,m])=>[k,m.label,m.icon]),
+    ["calendar","Calendario",I.cal],
+    ...(isAdmin ? [["users","Usuarios",I.team]] : []),
+  ];
+  return (
+    <div className="layout">
+      <aside className="sidebar">
+        <div className="brand"><Icon d={I.dash} size={22}/> <div>Ops Team Hub<small>Gestión de equipo TI</small></div></div>
+        {navItems.map(([k,l,ic])=>(
+          <button key={k} className={"nav-btn"+(view===k?" active":"")} onClick={()=>setView(k)}>
+            <Icon d={ic}/> {l}
+          </button>
+        ))}
+      </aside>
+      <main className="main">
+        <div className="topbar">
+          <NotifBell data={data}/>
+          <span className="role-chip" title={email}>{email} · <b>{role}</b></span>
+          <button className="btn ghost sm" onClick={onLogout}><Icon d={I.out} size={15}/> Salir</button>
+        </div>
+        {err && <div className="banner">Error al conectar con Supabase: {err}</div>}
+        {view==="dashboard" ? <Dashboard data={data} go={setView}/> :
+         view==="calendar"  ? <Calendar data={data}/> :
+         view==="users"     ? <UsersPage/> :
+         <ModulePage key={view} mkey={view} perm={perm} onChange={bump}/>}
+      </main>
+    </div>
+  );
+}
+
+/* ---------- administración de usuarios (solo Administrador) ---------- */
+function UsersPage(){
+  const [rows,setRows] = useState(null);
+  const [err,setErr] = useState(null);
+  async function load(){
+    const {data,error} = await db.from("profiles").select("*").order("created_at",{ascending:true});
+    if(error) setErr(error.message); else { setRows(data||[]); setErr(null); }
+  }
+  useEffect(()=>{ load(); },[]);
+  async function changeRole(id,role){
+    const {error} = await db.from("profiles").update({role}).eq("id",id);
+    if(error) alert("No se pudo cambiar el rol: "+error.message);
+    load();
+  }
+  return (
+    <div>
+      <h1 className="page-title">Usuarios</h1>
+      <p className="page-sub">Asigna el rol de cada persona. Los permisos se aplican en la base de datos.</p>
+      {err && <div className="banner">Error: {err}</div>}
+      <div className="card" style={{padding:0,overflow:"hidden"}}>
+        {rows===null ? <div className="empty">Cargando…</div> :
+         rows.length===0 ? <div className="empty">Aún no hay usuarios registrados.</div> :
+        <table>
+          <thead><tr><th>Correo</th><th>Rol</th><th>Alta</th></tr></thead>
+          <tbody>
+            {rows.map(u=>(
+              <tr key={u.id}>
+                <td>{u.email||"—"}</td>
+                <td>
+                  <select value={u.role} onChange={e=>changeRole(u.id,e.target.value)}
+                    style={{background:"var(--panel2)",border:"1px solid var(--line)",color:"var(--text)",padding:"6px 10px",borderRadius:8}}>
+                    {Object.keys(PERMS).map(r=><option key={r} value={r}>{r}</option>)}
+                  </select>
+                </td>
+                <td>{u.created_at ? new Date(u.created_at).toLocaleDateString("es") : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- login (Supabase Auth) ---------- */
+function Login(){
+  const [mode,setMode] = useState("in");   // in = iniciar sesión, up = registrarse
+  const [email,setEmail] = useState("");
+  const [pw,setPw] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [msg,setMsg] = useState(null);     // {t:"err"|"ok", m:string}
+
+  async function submit(e){
+    e.preventDefault(); setBusy(true); setMsg(null);
+    if(mode==="in"){
+      const {error} = await db.auth.signInWithPassword({email:email.trim(), password:pw});
+      if(error) setMsg({t:"err", m:error.message});
+    } else {
+      const {error} = await db.auth.signUp({email:email.trim(), password:pw});
+      if(error) setMsg({t:"err", m:error.message});
+      else setMsg({t:"ok", m:"Cuenta creada. Si el proyecto pide confirmación, revisa tu correo. Después, un administrador debe asignarte un rol."});
+    }
+    setBusy(false);
+  }
+  return (
+    <div className="main"><div className="login-wrap">
+      <div className="card">
+        <div className="brand" style={{justifyContent:"center"}}><Icon d={I.dash} size={24}/> Ops Team Hub</div>
+        <p className="page-sub" style={{margin:"0 0 18px"}}>{mode==="in"?"Inicia sesión":"Crea tu cuenta"}</p>
+        <form onSubmit={submit}>
+          <div className="field" style={{textAlign:"left"}}>
+            <label>Correo</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@empresa.com" autoFocus required/>
+          </div>
+          <div className="field" style={{textAlign:"left"}}>
+            <label>Contraseña</label>
+            <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required/>
+          </div>
+          {msg && <p style={{color:msg.t==="err"?"var(--red)":"var(--green)",fontSize:13,margin:"0 0 12px"}}>{msg.m}</p>}
+          <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>
+            {busy ? "…" : (mode==="in" ? "Entrar" : "Registrarme")}
+          </button>
+        </form>
+        <p className="page-sub" style={{margin:"16px 0 0",fontSize:13}}>
+          {mode==="in"
+            ? <>¿No tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("up");}} style={{color:"var(--accent)"}}>Regístrate</a></>
+            : <>¿Ya tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("in");}} style={{color:"var(--accent)"}}>Inicia sesión</a></>}
+        </p>
+      </div>
+    </div></div>
+  );
+}
+
+/* ---------- pantalla de configuración ---------- */
+function SetupScreen(){
+  return (
+    <div className="main"><div className="setup card">
+      <h2>⚙️ Configura Supabase</h2>
+      <p className="page-sub">El portal aún no está conectado a tu base de datos. Sigue estos pasos:</p>
+      <ol>
+        <li>Crea un proyecto gratis en <code>supabase.com</code>.</li>
+        <li>En <b>SQL Editor</b>, pega y ejecuta el archivo <code>supabase-schema.sql</code>.</li>
+        <li>Ve a <b>Project Settings → API</b> y copia el <code>Project URL</code> y la <code>anon key</code>.</li>
+        <li>Pégalos arriba de este archivo, en <code>window.OTH_CONFIG</code>.</li>
+      </ol>
+    </div></div>
+  );
+}
+
+/* ---------- hooks de datos ---------- */
+function useAllData(key){
+  const [data,setData] = useState(null);
+  const [err,setErr] = useState(null);
+  useEffect(()=>{ let alive=true; (async()=>{
+    try{
+      const tables=["team","leaves","guards","windows","courses","rollbacks"];
+      const res=await Promise.all(tables.map(t=>db.from(t).select("*")));
+      if(!alive) return;
+      const obj={}; tables.forEach((t,i)=> obj[t]=res[i].data||[]);
+      const e=res.find(r=>r.error); if(e) setErr(e.error.message); else setErr(null);
+      setData(obj);
+    }catch(e){ if(alive) setErr(e.message); }
+  })(); return ()=>{alive=false;}; },[key]);
+  return {data,err};
+}
+function useTable(table,onChange){
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true); const [err,setErr]=useState(null);
+  async function load(){
+    setLoading(true);
+    const {data,error}=await db.from(table).select("*").order("created_at",{ascending:false});
+    if(error) setErr(error.message); else { setRows(data||[]); setErr(null); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[table]);
+  return {rows,loading,err,load:()=>{load(); onChange&&onChange();}};
+}
+
+/* ---------- exportación ---------- */
+function exportExcel(m,rows){
+  const headers=m.cols.map(c=>c[1]);
+  const body=rows.map(r=>m.cols.map(c=>rawCell(r,c)));
+  const ws=XLSX.utils.aoa_to_sheet([headers,...body]);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,m.label.slice(0,31));
+  XLSX.writeFile(wb, m.table+".xlsx");
+}
+function exportPDF(m,rows){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"landscape"});
+  doc.setFontSize(14); doc.text(m.title,14,15);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text("Generado "+new Date().toLocaleString("es"),14,21);
+  doc.autoTable({
+    startY:26,
+    head:[m.cols.map(c=>c[1])],
+    body:rows.map(r=>m.cols.map(c=>rawCell(r,c))),
+    styles:{fontSize:8,cellPadding:3},
+    headStyles:{fillColor:[14,165,233]},
+  });
+  doc.save(m.table+".pdf");
+}
+
+/* ---------- página de módulo ---------- */
+function ModulePage({mkey,perm,onChange}){
+  const m=MODULES[mkey];
+  const {rows,loading,err,load}=useTable(m.table,onChange);
+  const [q,setQ]=useState("");
+  const [modal,setModal]=useState(null);
+
+  const filtered=useMemo(()=>{
+    if(!q.trim()) return rows;
+    const s=q.toLowerCase();
+    return rows.filter(r=> m.search.some(f=> String(r[f]||"").toLowerCase().includes(s)));
+  },[rows,q]);
+
+  async function save(obj){
+    const payload={...obj}; delete payload.id; delete payload.created_at;
+    if(obj.id) await db.from(m.table).update(payload).eq("id",obj.id);
+    else await db.from(m.table).insert(payload);
+    setModal(null); load();
+  }
+  async function remove(id){
+    if(!confirm("¿Eliminar este registro?")) return;
+    await db.from(m.table).delete().eq("id",id); load();
+  }
+
+  const showActions = perm.edit || perm.del;
+  return (
+    <div>
+      <h1 className="page-title">{m.title}</h1>
+      <p className="page-sub">{m.sub}</p>
+      {err && <div className="banner">Error: {err}</div>}
+      <div className="section-h">
+        <input className="search" placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn ghost sm" onClick={()=>exportExcel(m,filtered)}>Excel</button>
+          <button className="btn ghost sm" onClick={()=>exportPDF(m,filtered)}>PDF</button>
+          {perm.create && <button className="btn" onClick={()=>setModal({})}><Icon d={I.plus} size={16}/> Agregar</button>}
+        </div>
+      </div>
+      <div className="card" style={{padding:0,overflow:"hidden"}}>
+        {loading ? <div className="empty">Cargando…</div> :
+         filtered.length===0 ? <div className="empty">Sin registros.</div> :
+        <table>
+          <thead><tr>{m.cols.map(c=><th key={c[0]}>{c[1]}</th>)}{showActions&&<th></th>}</tr></thead>
+          <tbody>
+            {filtered.map(r=>(
+              <tr key={r.id} onDoubleClick={()=>perm.edit&&setModal(r)} style={{cursor:perm.edit?"pointer":"default"}}>
+                {m.cols.map(c=><td key={c[0]}>{fmt(r[c[0]],c[2])}</td>)}
+                {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                  {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={()=>setModal(r)}>Editar</button>}
+                  {perm.del && <button className="btn danger" onClick={()=>remove(r.id)}><Icon d={I.trash} size={16}/></button>}
+                </td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>}
+      </div>
+      {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save}/>}
+    </div>
+  );
+}
+
+/* ---------- modal ---------- */
+function FormModal({m,record,onClose,onSave}){
+  const [form,setForm]=useState(()=>{ const o={...record}; m.fields.forEach(f=>{ if(o[f[0]]===undefined) o[f[0]]=""; }); return o; });
+  const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+  function submit(e){ e.preventDefault(); const clean={...form}; m.fields.forEach(f=>{ if(clean[f[0]]==="") clean[f[0]]=null; }); onSave(clean); }
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <form className="modal" onClick={e=>e.stopPropagation()} onSubmit={submit}>
+        <h3>{record.id?"Editar":"Nuevo"} — {m.label}</h3>
+        {m.fields.map(([key,label,type,req,opts])=>(
+          <div className="field" key={key}>
+            <label>{label}{req?" *":""}</label>
+            {type==="select" ?
+              <select value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req}>
+                <option value="">Selecciona…</option>
+                {opts.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            : type==="textarea" ?
+              <textarea rows="3" value={form[key]||""} onChange={e=>set(key,e.target.value)}/>
+            :
+              <input type={type} value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req}/>
+            }
+          </div>
+        ))}
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn">Guardar</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ---------- campana de notificaciones ---------- */
+function NotifBell({data}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  const notifs=useMemo(()=>buildNotifs(data),[data]);
+  useEffect(()=>{
+    function h(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h);
+  },[]);
+  return (
+    <div className="bell-wrap" ref={ref}>
+      <button className="bell-btn" onClick={()=>setOpen(o=>!o)}><Icon d={I.bell} size={18}/></button>
+      {notifs.length>0 && <span className="bell-count">{notifs.length}</span>}
+      {open && <div className="notif-panel">
+        <h4>Notificaciones</h4>
+        {notifs.length===0 ? <p className="page-sub" style={{padding:"0 8px 8px"}}>Todo en orden.</p> :
+          notifs.map(([c,t],i)=>(
+            <div className="alert-row" key={i} style={{padding:"9px 8px"}}>
+              <span className="dot" style={{background:C[c]}}></span><div>{t}</div>
+            </div>
+          ))}
+      </div>}
+    </div>
+  );
+}
+
+/* ---------- dashboard ---------- */
+function Dashboard({data,go}){
+  if(!data) return (<div><h1 className="page-title">Dashboard</h1><p className="page-sub">Cargando…</p></div>);
+  const today=startToday();
+  const activos=data.team.filter(p=>p.estado==="Activo").length;
+  const ausenciasCurso=data.leaves.filter(l=>{ const i=pd(l.fecha_inicio),f=pd(l.fecha_fin); return i&&f&&i<=today&&f>=today&&l.estado!=="Rechazado"; }).length;
+  const guardiasAsign=data.guards.length;
+  const ventanasProx=data.windows.filter(w=>w.fecha_hora&&new Date(w.fecha_hora)>=today&&w.estado!=="Cancelada").length;
+
+  const eventos=[];
+  data.windows.forEach(w=>{ if(w.fecha_hora) eventos.push({fecha:new Date(w.fecha_hora),tipo:"Ventana",txt:w.sistema,estado:w.estado}); });
+  data.guards.forEach(g=>{ const f=pd(g.fecha_inicio); if(f) eventos.push({fecha:f,tipo:"Guardia",txt:`${g.persona} · ${g.tipo||""}`,estado:""}); });
+  const proximos=eventos.filter(e=>e.fecha>=today).sort((a,b)=>a.fecha-b.fecha).slice(0,6);
+
+  const alertas=[];
+  computeConflicts(data).forEach(c=>alertas.push(["red",`Choque de agenda: ${c.persona} (${c.date.toLocaleDateString("es",{day:"numeric",month:"short"})})`]));
+  data.windows.filter(w=>w.estado==="En ejecución").forEach(w=>alertas.push(["amber",`Ventana en ejecución: ${w.sistema}`]));
+  data.leaves.filter(l=>l.estado==="Pendiente").forEach(l=>alertas.push(["amber",`Permiso pendiente: ${l.persona}`]));
+  data.rollbacks.filter(r=>r.estado==="Fallido").forEach(r=>alertas.push(["red",`Reverso fallido: ${r.release}`]));
+
+  const kpis=[
+    ["Personal activo",activos,I.team,"team"],
+    ["Ausencias en curso",ausenciasCurso,I.leave,"leaves"],
+    ["Guardias asignadas",guardiasAsign,I.guard,"guards"],
+    ["Ventanas próximas",ventanasProx,I.wind,"windows"],
+  ];
+  return (
+    <div>
+      <h1 className="page-title">Dashboard</h1>
+      <p className="page-sub">Vista general del equipo · {today.toLocaleDateString("es",{dateStyle:"full"})}</p>
+      <div className="grid kpis" style={{marginBottom:18}}>
+        {kpis.map(([l,n,ic,k])=>(
+          <div className="card kpi" key={l} style={{cursor:"pointer"}} onClick={()=>go(k)}>
+            <span className="ico"><Icon d={ic} size={22}/></span>
+            <div className="n">{n}</div><div className="l">{l}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+        <div className="card">
+          <h3 style={{marginTop:0}}>Próximos eventos</h3>
+          {proximos.length===0 ? <p className="page-sub">No hay eventos próximos.</p> :
+            proximos.map((e,i)=>(
+              <div className="alert-row" key={i}>
+                <span className="dot" style={{background:e.tipo==="Ventana"?C.accent:C.violet}}></span>
+                <div>
+                  <div>{e.tipo}: <b>{e.txt}</b> {e.estado&&<Pill v={e.estado}/>}</div>
+                  <div className="page-sub" style={{margin:0}}>{e.fecha.toLocaleDateString("es",{dateStyle:"medium"})}</div>
+                </div>
+              </div>
+            ))}
+        </div>
+        <div className="card">
+          <h3 style={{marginTop:0}}><Icon d={I.bell} size={16}/> Alertas</h3>
+          {alertas.length===0 ? <p className="page-sub">Todo en orden, sin alertas.</p> :
+            alertas.slice(0,8).map(([c,t],i)=>(
+              <div className="alert-row" key={i}><span className="dot" style={{background:C[c]}}></span><div>{t}</div></div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- calendario ---------- */
+function Calendar({data}){
+  const [cursor,setCursor]=useState(()=>{ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),1); });
+  const byDay=useMemo(()=>{
+    const map={};
+    const push=(d,ev)=>{ const k=dkey(d); (map[k]=map[k]||[]).push(ev); };
+    if(data){
+      data.leaves.forEach(l=>{ if(l.estado==="Rechazado")return; const a=pd(l.fecha_inicio),b=pd(l.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"amber",label:`${l.persona} · ${l.tipo||"Permiso"}`,persona:l.persona,kind:"leave"}); d.setDate(d.getDate()+1);i++; } });
+      data.guards.forEach(g=>{ const a=pd(g.fecha_inicio),b=pd(g.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"violet",label:`${g.persona} · ${g.tipo||"Guardia"}`,persona:g.persona,kind:"guard"}); d.setDate(d.getDate()+1);i++; } });
+      data.windows.forEach(w=>{ if(!w.fecha_hora||w.estado==="Cancelada")return; push(new Date(w.fecha_hora),{color:"accent",label:`${w.sistema}`,kind:"window"}); });
+    }
+    // marcar choques
+    Object.values(map).forEach(evs=>{
+      const personas={};
+      evs.forEach(e=>{ if(e.persona){ personas[e.persona]=personas[e.persona]||{}; personas[e.persona][e.kind]=true; } });
+      evs.forEach(e=>{ if(e.persona && personas[e.persona].leave && personas[e.persona].guard) e.conflict=true; });
+    });
+    return map;
+  },[data]);
+
+  const y=cursor.getFullYear(), mo=cursor.getMonth();
+  const first=new Date(y,mo,1);
+  const startDow=(first.getDay()+6)%7; // lunes=0
+  const daysInMonth=new Date(y,mo+1,0).getDate();
+  const todayK=dkey(startToday());
+  const cells=[];
+  for(let i=0;i<startDow;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(new Date(y,mo,d));
+  while(cells.length%7!==0) cells.push(null);
+
+  const dows=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+  return (
+    <div>
+      <h1 className="page-title">Calendario</h1>
+      <p className="page-sub">Guardias, ventanas y permisos en una sola vista. Los choques de agenda se marcan en rojo.</p>
+      <div className="cal-bar">
+        <button className="btn ghost sm" onClick={()=>setCursor(new Date(y,mo-1,1))}><Icon d={I.left} size={16}/></button>
+        <h2>{cursor.toLocaleDateString("es",{month:"long",year:"numeric"})}</h2>
+        <button className="btn ghost sm" onClick={()=>setCursor(new Date(y,mo+1,1))}><Icon d={I.right} size={16}/></button>
+        <button className="btn ghost sm" onClick={()=>{const t=new Date();setCursor(new Date(t.getFullYear(),t.getMonth(),1));}}>Hoy</button>
+      </div>
+      <div className="card">
+        <div className="cal-head">{dows.map(d=><div key={d}>{d}</div>)}</div>
+        <div className="cal-grid">
+          {cells.map((d,i)=>{
+            if(!d) return <div key={i} className="cal-cell off"></div>;
+            const k=dkey(d); const evs=byDay[k]||[];
+            return (
+              <div key={i} className={"cal-cell"+(k===todayK?" today":"")}>
+                <div className="cal-day">{d.getDate()}</div>
+                {evs.slice(0,4).map((e,j)=>(
+                  <div key={j} className={"cal-ev"+(e.conflict?" conflict":"")} style={{background:HEX[e.color]}} title={e.label}>{e.label}</div>
+                ))}
+                {evs.length>4 && <div className="page-sub" style={{margin:0,fontSize:11}}>+{evs.length-4} más</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div className="legend">
+          <span><i style={{background:HEX.violet}}></i> Guardia</span>
+          <span><i style={{background:HEX.accent}}></i> Ventana</span>
+          <span><i style={{background:HEX.amber}}></i> Permiso</span>
+          <span><i style={{background:HEX.red,width:10,height:10,border:"2px solid "+HEX.red,background:"transparent"}}></i> Choque de agenda</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
