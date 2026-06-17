@@ -141,7 +141,8 @@ const CAT = {
   estadoPersona: ["Activo","Inactivo"],
   tipoPermiso: ["Vacaciones","Permiso personal","Permiso médico","Home office","Otro"],
   estadoPermiso: ["Pendiente","Aprobado","Rechazado"],
-  tipoGuardia: ["Guardia nocturna","Guardia fin de semana","On-call","Soporte 24x7"],
+  tipoGuardia: ["Cambios nocturnos","Guardia matutina","Guardia nocturna","Guardia fin de semana","On-call","Soporte 24x7"],
+  turnoVentana: ["Matutino","Nocturno"],
   estadoVentana: ["Programada","En ejecución","Completada","Cancelada"],
   estadoCurso: ["Inscrito","En curso","Completado","Certificado"],
   estadoReverso: ["Planificado","En proceso","Completado","Fallido"],
@@ -182,9 +183,9 @@ function Icon({d,size=18}){return <svg width={size} height={size} viewBox="0 0 2
 /* ---------- módulos ---------- */
 const MODULES = {
   team:{ table:"team", label:"Equipo", icon:I.team, title:"Equipo", sub:"Registro del personal del equipo de TI",
-    cols:[["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["estado","Estado","pill"]],
-    fields:[["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
-    search:["nombre","rol","area","correo"] },
+    cols:[["numero_empleado","N° empleado"],["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["estado","Estado","pill"]],
+    fields:[["numero_empleado","N° empleado","text"],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
+    search:["numero_empleado","nombre","rol","area","correo"] },
   leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
     cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["estado","Estado","pill"],["notas","Notas"]],
     fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
@@ -194,12 +195,12 @@ const MODULES = {
     fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["notas","Notas","textarea"]],
     search:["persona","tipo"] },
   windows:{ table:"windows", label:"Ventanas", icon:I.wind, title:"Ventanas de mantenimiento", sub:"Planeación y seguimiento de mantenimientos",
-    cols:[["sistema","Sistema"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
-    fields:[["sistema","Sistema / servicio","text",true],["responsable","Responsable","text"],["fecha_hora","Fecha y hora","datetime-local"],["descripcion","Descripción","textarea"],["estado","Estado","select",false,CAT.estadoVentana]],
-    search:["sistema","responsable"] },
+    cols:[["sistema","Sistema"],["turno","Turno"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
+    fields:[["sistema","Sistema / servicio","text",true],["turno","Turno","select",false,CAT.turnoVentana],["responsable","Responsable","text"],["fecha_hora","Fecha y hora","datetime-local"],["descripcion","Descripción","textarea"],["estado","Estado","select",false,CAT.estadoVentana]],
+    search:["sistema","responsable","turno"] },
   courses:{ table:"courses", label:"Cursos", icon:I.course, title:"Cursos", sub:"Capacitación y certificaciones del equipo",
-    cols:[["persona","Persona"],["curso","Curso"],["proveedor","Proveedor"],["fecha","Fecha"],["estado","Estado","pill"]],
-    fields:[["persona","Persona","text",true],["curso","Nombre del curso","text"],["proveedor","Proveedor","text"],["fecha","Fecha","date"],["estado","Estado","select",false,CAT.estadoCurso]],
+    cols:[["persona","Persona"],["curso","Curso"],["semana","Semana"],["proveedor","Proveedor"],["fecha","Fecha"],["estado","Estado","pill"]],
+    fields:[["persona","Persona","text",true],["curso","Nombre del curso","text"],["semana","Semana","number"],["proveedor","Proveedor","text"],["fecha","Fecha","date"],["estado","Estado","select",false,CAT.estadoCurso]],
     search:["persona","curso","proveedor"] },
   rollbacks:{ table:"rollbacks", label:"Reversos", icon:I.roll, title:"Reversos / Rollbacks", sub:"Registro y control de reversos de cambios o despliegues",
     cols:[["release","Release / cambio"],["responsable","Responsable"],["fecha","Fecha"],["motivo","Motivo"],["estado","Estado","pill"],["resultado","Resultado"]],
@@ -266,10 +267,14 @@ function App(){
   const [session,setSession] = useState(undefined);   // undefined=cargando, null=sin sesión
   const [role,setRole] = useState(null);
   const [roleLoading,setRoleLoading] = useState(false);
+  const [recovery,setRecovery] = useState(false);
 
   useEffect(()=>{
     db.auth.getSession().then(({data})=>setSession(data.session||null));
-    const {data:sub} = db.auth.onAuthStateChange((_e,s)=>setSession(s||null));
+    const {data:sub} = db.auth.onAuthStateChange((event,s)=>{
+      setSession(s||null);
+      if(event==="PASSWORD_RECOVERY") setRecovery(true);
+    });
     return ()=> sub.subscription.unsubscribe();
   },[]);
 
@@ -284,6 +289,7 @@ function App(){
   },[session]);
 
   if(session===undefined) return <Splash text="Cargando…"/>;
+  if(recovery && session) return <SetNewPassword onDone={()=>setRecovery(false)}/>;
   if(!session) return <Login/>;
   if(roleLoading || !role) return <Splash text="Cargando perfil…"/>;
   return <Shell role={role} email={session.user.email} onLogout={()=>db.auth.signOut()}/>;
@@ -303,6 +309,7 @@ function Shell({role,email,onLogout}){
   const navItems = [
     ["dashboard","Dashboard",I.dash],
     ...Object.entries(MODULES).map(([k,m])=>[k,m.label,m.icon]),
+    ["roster","Rol de guardias",I.guard],
     ["calendar","Calendario",I.cal],
     ...(isAdmin ? [["users","Usuarios",I.team]] : []),
   ];
@@ -325,6 +332,7 @@ function Shell({role,email,onLogout}){
         {err && <div className="banner">Error al conectar con Supabase: {err}</div>}
         {view==="dashboard" ? <Dashboard data={data} go={setView}/> :
          view==="calendar"  ? <Calendar data={data}/> :
+         view==="roster"    ? <GuardRoster perm={perm} onChange={bump}/> :
          view==="users"     ? <UsersPage/> :
          <ModulePage key={view} mkey={view} perm={perm} onChange={bump}/>}
       </main>
@@ -396,6 +404,13 @@ function Login(){
     }
     setBusy(false);
   }
+  async function forgot(){
+    if(!email.trim()){ setMsg({t:"err", m:"Escribe tu correo arriba y vuelve a pulsar “¿Olvidaste tu contraseña?”."}); return; }
+    setBusy(true); setMsg(null);
+    const {error} = await db.auth.resetPasswordForEmail(email.trim(), {redirectTo: window.location.href});
+    setBusy(false);
+    setMsg(error ? {t:"err", m:error.message} : {t:"ok", m:"Te enviamos un correo para restablecer tu contraseña. Ábrelo y vuelve a este portal."});
+  }
   return (
     <div className="main"><div className="login-wrap">
       <div className="card">
@@ -415,13 +430,44 @@ function Login(){
             {busy ? "…" : (mode==="in" ? "Entrar" : "Registrarme")}
           </button>
         </form>
-        <p className="page-sub" style={{margin:"16px 0 0",fontSize:13}}>
+        {mode==="in" && <p style={{margin:"12px 0 0",fontSize:13}}>
+          <a href="#" onClick={e=>{e.preventDefault();forgot();}} style={{color:"var(--muted)"}}>¿Olvidaste tu contraseña?</a>
+        </p>}
+        <p className="page-sub" style={{margin:"10px 0 0",fontSize:13}}>
           {mode==="in"
             ? <>¿No tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("up");}} style={{color:"var(--accent)"}}>Regístrate</a></>
             : <>¿Ya tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("in");}} style={{color:"var(--accent)"}}>Inicia sesión</a></>}
         </p>
       </div>
     </div></div>
+  );
+}
+
+/* ---------- fijar nueva contraseña (flujo de recuperación) ---------- */
+function SetNewPassword({onDone}){
+  const [pw,setPw] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [msg,setMsg] = useState(null);
+  async function submit(e){
+    e.preventDefault(); setBusy(true); setMsg(null);
+    const {error} = await db.auth.updateUser({password:pw});
+    setBusy(false);
+    if(error) setMsg(error.message);
+    else { alert("Contraseña actualizada. Ya puedes usar el portal."); onDone(); }
+  }
+  return (
+    <div className="main"><div className="login-wrap"><div className="card">
+      <div className="brand" style={{justifyContent:"center"}}><Icon d={I.dash} size={24}/> Ops Team Hub</div>
+      <p className="page-sub" style={{margin:"0 0 18px"}}>Define tu nueva contraseña</p>
+      <form onSubmit={submit}>
+        <div className="field" style={{textAlign:"left"}}>
+          <label>Nueva contraseña</label>
+          <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required minLength={6}/>
+        </div>
+        {msg && <p style={{color:"var(--red)",fontSize:13,margin:"0 0 12px"}}>{msg}</p>}
+        <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>{busy?"…":"Guardar"}</button>
+      </form>
+    </div></div></div>
   );
 }
 
@@ -517,13 +563,18 @@ function ModulePage({mkey,perm,onChange}){
     if(!confirm("¿Eliminar este registro?")) return;
     await db.from(m.table).delete().eq("id",id); load();
   }
+  async function aprobar(r,estado){
+    await db.from(m.table).update({estado}).eq("id",r.id); load();
+  }
 
-  const showActions = perm.edit || perm.del;
+  const canApprove = mkey==="leaves" && perm.del;   // Administrador y Líder
+  const showActions = perm.edit || perm.del || canApprove;
   return (
     <div>
       <h1 className="page-title">{m.title}</h1>
       <p className="page-sub">{m.sub}</p>
       {err && <div className="banner">Error: {err}</div>}
+      {mkey==="courses" && <CourseRanking rows={rows}/>}
       <div className="section-h">
         <input className="search" placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
         <div style={{display:"flex",gap:8}}>
@@ -542,6 +593,10 @@ function ModulePage({mkey,perm,onChange}){
               <tr key={r.id} onDoubleClick={()=>perm.edit&&setModal(r)} style={{cursor:perm.edit?"pointer":"default"}}>
                 {m.cols.map(c=><td key={c[0]}>{fmt(r[c[0]],c[2])}</td>)}
                 {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                  {canApprove && r.estado==="Pendiente" && <>
+                    <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={()=>aprobar(r,"Aprobado")}>Aprobar</button>
+                    <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={()=>aprobar(r,"Rechazado")}>Rechazar</button>
+                  </>}
                   {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={()=>setModal(r)}>Editar</button>}
                   {perm.del && <button className="btn danger" onClick={()=>remove(r.id)}><Icon d={I.trash} size={16}/></button>}
                 </td>}
@@ -584,6 +639,101 @@ function FormModal({m,record,onClose,onSave}){
           <button type="submit" className="btn">Guardar</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* ---------- Rol de guardias (rotación) ---------- */
+function GuardRoster({perm,onChange}){
+  const [rows,setRows] = useState(null);
+  const [err,setErr] = useState(null);
+  async function load(){
+    const {data,error} = await db.from("guard_roster").select("*").order("orden",{ascending:true});
+    if(error) setErr(error.message); else { setRows(data||[]); setErr(null); }
+  }
+  useEffect(()=>{ load(); },[]);
+  const turnos = ["Cambios nocturnos","Guardia matutina"];
+  function nextId(list){
+    if(!list.length) return null;
+    return [...list].sort((a,b)=> (a.veces-b.veces) || (a.orden-b.orden))[0].id;
+  }
+  async function registrar(r){
+    await db.from("guard_roster").update({veces:(r.veces||0)+1, ultima_guardia:new Date().toISOString().slice(0,10)}).eq("id",r.id);
+    load(); onChange&&onChange();
+  }
+  async function reiniciar(turno){
+    if(!confirm("¿Reiniciar la rotación de "+turno+"? Pone los contadores en cero.")) return;
+    const ids = rows.filter(x=>x.turno===turno).map(x=>x.id);
+    if(ids.length) await db.from("guard_roster").update({veces:0,ultima_guardia:null}).in("id",ids);
+    load();
+  }
+  if(rows===null) return <div><h1 className="page-title">Rol de guardias</h1><p className="page-sub">Cargando…</p></div>;
+  return (
+    <div>
+      <h1 className="page-title">Rol de guardias</h1>
+      <p className="page-sub">Rotación de cambios tomada del Excel. La persona en verde es <b>quién sigue</b>; al registrar un cambio pasa el turno al siguiente.</p>
+      {err && <div className="banner">Error: {err}</div>}
+      <div className="grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+        {turnos.map(t=>{
+          const list = rows.filter(r=>r.turno===t).sort((a,b)=>a.orden-b.orden);
+          const nid = nextId(list);
+          return (
+            <div className="card" key={t} style={{padding:0,overflow:"hidden"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--line)"}}>
+                <h3 style={{margin:0}}>{t}</h3>
+                {perm.del && <button className="btn ghost sm" onClick={()=>reiniciar(t)}>Reiniciar</button>}
+              </div>
+              {list.length===0 ? <div className="empty">Sin personas.</div> :
+              <table>
+                <thead><tr><th>#</th><th>Persona</th><th>Última</th><th>Veces</th><th></th></tr></thead>
+                <tbody>
+                  {list.map(r=>(
+                    <tr key={r.id} style={r.id===nid?{background:HEX.green+"1f"}:null}>
+                      <td>{r.orden}</td>
+                      <td>
+                        {r.id===nid && <span className="pill" style={{background:HEX.green+"22",color:HEX.green,marginRight:6}}>sigue</span>}
+                        {r.persona}
+                      </td>
+                      <td>{r.ultima_guardia ? new Date(r.ultima_guardia).toLocaleDateString("es") : "—"}</td>
+                      <td>{r.veces||0}</td>
+                      <td style={{textAlign:"right"}}>
+                        {perm.edit && r.id===nid && <button className="btn sm" onClick={()=>registrar(r)}>Registrar cambio</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- ranking de cursos ---------- */
+function CourseRanking({rows}){
+  const rank = useMemo(()=>{
+    const m={};
+    rows.forEach(r=>{ const k=(r.curso||"").trim(); if(k) m[k]=(m[k]||0)+1; });
+    return Object.entries(m).sort((a,b)=> b[1]-a[1]);
+  },[rows]);
+  if(rank.length===0) return null;
+  const max = rank[0][1];
+  return (
+    <div className="card" style={{marginBottom:16}}>
+      <h3 style={{marginTop:0}}>Ranking de cursos <span className="page-sub" style={{fontSize:13}}>· {rows.length} inscripciones · {rank.length} cursos</span></h3>
+      {rank.map(([c,n],i)=>(
+        <div key={c} style={{display:"flex",alignItems:"center",gap:10,margin:"7px 0"}}>
+          <div style={{width:22,color:"var(--muted)",fontSize:13,textAlign:"right"}}>{i+1}</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>{c}</span><b>{n}</b></div>
+            <div style={{height:8,background:"var(--panel2)",borderRadius:5,overflow:"hidden"}}>
+              <div style={{height:"100%",width:(n/max*100)+"%",background:"var(--accent2)"}}></div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
