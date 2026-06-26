@@ -142,7 +142,7 @@ const CAT = {
   tipoPermiso: ["Vacaciones","Permiso personal","Permiso médico","Home office","Otro"],
   estadoPermiso: ["Pendiente","Aprobado","Rechazado"],
   tipoGuardia: ["Cambios nocturnos","Guardia matutina","Guardia nocturna","Guardia fin de semana","On-call","Soporte 24x7"],
-  turnoVentana: ["Matutino","Nocturno"],
+  turnoVentana: ["Matutino","Nocturno","Matutino y Nocturno"],
   estadoVentana: ["Programada","En ejecución","Completada","Cancelada"],
   estadoCurso: ["Inscrito","En curso","Completado","Certificado"],
   estadoReverso: ["Planificado","En proceso","Completado","Fallido"],
@@ -184,15 +184,15 @@ function Icon({d,size=18}){return <svg width={size} height={size} viewBox="0 0 2
 const MODULES = {
   team:{ table:"team", label:"Equipo", icon:I.team, title:"Equipo", sub:"Registro del personal del equipo de TI",
     cols:[["numero_empleado","N° empleado"],["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["estado","Estado","pill"]],
-    fields:[["numero_empleado","N° empleado","text"],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
+    fields:[["numero_empleado","N° empleado","text",true],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
     search:["numero_empleado","nombre","rol","area","correo"] },
   leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
     cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["estado","Estado","pill"],["notas","Notas"]],
     fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
     search:["persona","tipo"] },
   guards:{ table:"guards", label:"Guardias", icon:I.guard, title:"Guardias / On-call", sub:"Asignación de turnos de guardia y soporte",
-    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["notas","Notas"]],
-    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["notas","Notas","textarea"]],
+    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["hora_inicio","Hora inicio"],["fecha_fin","Fin"],["notas","Notas"]],
+    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["hora_inicio","Hora inicio","time"],["fecha_fin","Fecha fin","date"],["notas","Notas","textarea"]],
     search:["persona","tipo"] },
   windows:{ table:"windows", label:"Ventanas", icon:I.wind, title:"Ventanas de mantenimiento", sub:"Planeación y seguimiento de mantenimientos",
     cols:[["sistema","Sistema"],["turno","Turno"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
@@ -206,6 +206,10 @@ const MODULES = {
     cols:[["release","Release / cambio"],["responsable","Responsable"],["fecha","Fecha"],["motivo","Motivo"],["estado","Estado","pill"],["resultado","Resultado"]],
     fields:[["release","Release / cambio","text",true],["responsable","Responsable","text"],["fecha","Fecha","date"],["motivo","Motivo","textarea"],["resultado","Resultado","text"],["estado","Estado","select",false,CAT.estadoReverso]],
     search:["release","responsable"] },
+  mdc:{ table:"mdc_changes", label:"Cambios", icon:I.wind, title:"Mapeo de Cambios (MDC)", sub:"Registro y control del mapeo de cambios a producción",
+    cols:[["fecha","Día de Cambio"],["sistema","Sistema"],["ticket","Ticket / RFC"],["responsable_cambio","Responsable"],["estado","Resultado","pill"]],
+    fields:[], 
+    search:["sistema","responsable_cambio","ticket","folio_hydra","folio_simba"] },
 };
 
 /* ---------- utilidades de fecha ---------- */
@@ -330,11 +334,11 @@ function Shell({role,email,onLogout}){
           <button className="btn ghost sm" onClick={onLogout}><Icon d={I.out} size={15}/> Salir</button>
         </div>
         {err && <div className="banner">Error al conectar con Supabase: {err}</div>}
-        {view==="dashboard" ? <Dashboard data={data} go={setView}/> :
+        {view==="dashboard" ? <Dashboard data={data} go={setView} onRefresh={bump} role={role}/> :
          view==="calendar"  ? <Calendar data={data}/> :
          view==="roster"    ? <GuardRoster perm={perm} onChange={bump}/> :
          view==="users"     ? <UsersPage/> :
-         <ModulePage key={view} mkey={view} perm={perm} onChange={bump}/>}
+         <ModulePage key={view} mkey={view} perm={perm} onChange={bump} data={data} currentUserEmail={email}/>}
       </main>
     </div>
   );
@@ -386,11 +390,18 @@ function UsersPage(){
 
 /* ---------- login (Supabase Auth) ---------- */
 function Login(){
-  const [mode,setMode] = useState("in");   // in = iniciar sesión, up = registrarse
+  const [mode,setMode] = useState("in");   // in = iniciar sesión, up = registrarse, activate = activar cuenta
   const [email,setEmail] = useState("");
   const [pw,setPw] = useState("");
   const [busy,setBusy] = useState(false);
   const [msg,setMsg] = useState(null);     // {t:"err"|"ok", m:string}
+
+  // Estados específicos para el flujo de activación
+  const [step,setStep] = useState(1);       // 1 = ingresar num empleado, 2 = capturar correo/pass
+  const [empNum,setEmpNum] = useState("");
+  const [empName,setEmpName] = useState("");
+  const [hasEmail,setHasEmail] = useState(false);
+  const [repeatPw,setRepeatPw] = useState("");
 
   async function submit(e){
     e.preventDefault(); setBusy(true); setMsg(null);
@@ -404,6 +415,84 @@ function Login(){
     }
     setBusy(false);
   }
+
+  async function handleVerify(e){
+    e.preventDefault();
+    if(!empNum.trim()){
+      setMsg({t:"err", m:"Por favor ingresa tu número de empleado."});
+      return;
+    }
+    setBusy(true); setMsg(null);
+    try {
+      const { data, error } = await db.rpc("verify_employee", { emp_num: empNum.trim() });
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        setMsg({t:"err", m:"No se encontró ningún empleado activo con ese número."});
+      } else {
+        const emp = data[0];
+        setEmpName(emp.nombre);
+        setHasEmail(emp.has_email);
+        setEmail(emp.correo || "");
+        setStep(2);
+      }
+    } catch (err) {
+      setMsg({t:"err", m:err.message || "Error al verificar el número de empleado."});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleActivate(e){
+    e.preventDefault();
+    const cleanEmail = email.trim();
+    if(!cleanEmail){
+      setMsg({t:"err", m:"El correo electrónico es obligatorio."});
+      return;
+    }
+    if(pw.length < 6){
+      setMsg({t:"err", m:"La contraseña debe tener al menos 6 caracteres."});
+      return;
+    }
+    if(pw !== repeatPw){
+      setMsg({t:"err", m:"Las contraseñas no coinciden."});
+      return;
+    }
+
+    setBusy(true); setMsg(null);
+    try {
+      // 1) Si no tiene correo en la base de datos de team, lo actualizamos vía RPC
+      if(!hasEmail){
+        const { data: updated, error: updateErr } = await db.rpc("activate_employee_email", { 
+          emp_num: empNum.trim(), 
+          emp_email: cleanEmail 
+        });
+        if (updateErr) throw updateErr;
+        if (!updated) {
+          throw new Error("No se pudo asociar el correo a tu número de empleado.");
+        }
+      }
+
+      // 2) Registrar en Supabase Auth
+      const { error: signUpErr } = await db.auth.signUp({ email: cleanEmail, password: pw });
+      if (signUpErr) throw signUpErr;
+
+      setMsg({
+        t: "ok", 
+        m: "¡Cuenta activada con éxito! Revisa tu correo si se requiere confirmación. Ahora puedes iniciar sesión con tu correo y contraseña."
+      });
+      // Limpiar estados y regresar al login
+      setMode("in");
+      setStep(1);
+      setEmpNum("");
+      setPw("");
+      setRepeatPw("");
+    } catch (err) {
+      setMsg({t:"err", m:err.message || "Error durante la activación de la cuenta."});
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function forgot(){
     if(!email.trim()){ setMsg({t:"err", m:"Escribe tu correo arriba y vuelve a pulsar “¿Olvidaste tu contraseña?”."}); return; }
     setBusy(true); setMsg(null);
@@ -411,33 +500,112 @@ function Login(){
     setBusy(false);
     setMsg(error ? {t:"err", m:error.message} : {t:"ok", m:"Te enviamos un correo para restablecer tu contraseña. Ábrelo y vuelve a este portal."});
   }
+
   return (
     <div className="main"><div className="login-wrap">
       <div className="card">
         <div className="brand" style={{justifyContent:"center"}}><Icon d={I.dash} size={24}/> Ops Team Hub</div>
-        <p className="page-sub" style={{margin:"0 0 18px"}}>{mode==="in"?"Inicia sesión":"Crea tu cuenta"}</p>
-        <form onSubmit={submit}>
-          <div className="field" style={{textAlign:"left"}}>
-            <label>Correo</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@empresa.com" autoFocus required/>
+        
+        {mode === "activate" ? (
+          <div>
+            <p className="page-sub" style={{margin:"0 0 18px"}}>Activa tu cuenta</p>
+            {step === 1 ? (
+              <form onSubmit={handleVerify}>
+                <p style={{fontSize:13, color:"var(--muted)", margin:"0 0 14px"}}>
+                  Ingresa tu número de empleado para verificar tu registro en el equipo.
+                </p>
+                <div className="field" style={{textAlign:"left"}}>
+                  <label>Número de Empleado</label>
+                  <input type="text" value={empNum} onChange={e=>setEmpNum(e.target.value)} placeholder="Ej. 1089348" autoFocus required/>
+                </div>
+                {msg && <p style={{color:msg.t==="err"?"var(--red)":"var(--green)",fontSize:13,margin:"0 0 12px"}}>{msg.m}</p>}
+                <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>
+                  {busy ? "Verificando…" : "Verificar Empleado"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleActivate}>
+                <div style={{background:"var(--panel2)", padding:"10px 14px", borderRadius:8, border:"1px solid var(--line)", margin:"0 0 14px", textAlign:"left"}}>
+                  <p style={{fontSize:12, color:"var(--muted)", margin:0}}>Empleado identificado</p>
+                  <p style={{fontSize:14, fontWeight:600, color:"var(--text)", margin:"2px 0 0"}}>{empName}</p>
+                  <p style={{fontSize:11, color:"var(--muted)", margin:"2px 0 0"}}>Número: {empNum}</p>
+                </div>
+
+                <div className="field" style={{textAlign:"left"}}>
+                  <label>Correo Electrónico</label>
+                  <input 
+                    type="email" 
+                    value={email} 
+                    onChange={e=>setEmail(e.target.value)} 
+                    placeholder="correo@empresa.com" 
+                    required 
+                    disabled={hasEmail}
+                    style={hasEmail ? {background:"var(--panel2)", color:"var(--muted)", cursor:"not-allowed"} : {}}
+                  />
+                  {!hasEmail && (
+                    <small style={{fontSize:11, color:"var(--muted)", marginTop:4, display:"block"}}>
+                      No tienes un correo registrado. Ingresa el correo con el que deseas acceder.
+                    </small>
+                  )}
+                </div>
+
+                <div className="field" style={{textAlign:"left"}}>
+                  <label>Contraseña</label>
+                  <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required minLength={6}/>
+                </div>
+
+                <div className="field" style={{textAlign:"left"}}>
+                  <label>Confirmar Contraseña</label>
+                  <input type="password" value={repeatPw} onChange={e=>setRepeatPw(e.target.value)} placeholder="••••••••" required minLength={6}/>
+                </div>
+
+                {msg && <p style={{color:msg.t==="err"?"var(--red)":"var(--green)",fontSize:13,margin:"0 0 12px"}}>{msg.m}</p>}
+                
+                <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>
+                  {busy ? "Activando…" : "Activar Cuenta y Entrar"}
+                </button>
+                
+                <p style={{margin:"12px 0 0",fontSize:13}}>
+                  <a href="#" onClick={e=>{e.preventDefault();setStep(1);setMsg(null);}} style={{color:"var(--muted)"}}>← Cambiar número de empleado</a>
+                </p>
+              </form>
+            )}
           </div>
-          <div className="field" style={{textAlign:"left"}}>
-            <label>Contraseña</label>
-            <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required/>
+        ) : (
+          <div>
+            <p className="page-sub" style={{margin:"0 0 18px"}}>{mode==="in"?"Inicia sesión":"Crea tu cuenta"}</p>
+            <form onSubmit={submit}>
+              <div className="field" style={{textAlign:"left"}}>
+                <label>Correo</label>
+                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@empresa.com" autoFocus required/>
+              </div>
+              <div className="field" style={{textAlign:"left"}}>
+                <label>Contraseña</label>
+                <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required/>
+              </div>
+              {msg && <p style={{color:msg.t==="err"?"var(--red)":"var(--green)",fontSize:13,margin:"0 0 12px"}}>{msg.m}</p>}
+              <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>
+                {busy ? "…" : (mode==="in" ? "Entrar" : "Registrarme")}
+              </button>
+            </form>
+            
+            {mode==="in" && <p style={{margin:"12px 0 0",fontSize:13}}>
+              <a href="#" onClick={e=>{e.preventDefault();forgot();}} style={{color:"var(--muted)"}}>¿Olvidaste tu contraseña?</a>
+            </p>}
           </div>
-          {msg && <p style={{color:msg.t==="err"?"var(--red)":"var(--green)",fontSize:13,margin:"0 0 12px"}}>{msg.m}</p>}
-          <button className="btn" style={{width:"100%",justifyContent:"center"}} type="submit" disabled={busy}>
-            {busy ? "…" : (mode==="in" ? "Entrar" : "Registrarme")}
-          </button>
-        </form>
-        {mode==="in" && <p style={{margin:"12px 0 0",fontSize:13}}>
-          <a href="#" onClick={e=>{e.preventDefault();forgot();}} style={{color:"var(--muted)"}}>¿Olvidaste tu contraseña?</a>
-        </p>}
-        <p className="page-sub" style={{margin:"10px 0 0",fontSize:13}}>
-          {mode==="in"
-            ? <>¿No tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("up");}} style={{color:"var(--accent)"}}>Regístrate</a></>
-            : <>¿Ya tienes cuenta? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("in");}} style={{color:"var(--accent)"}}>Inicia sesión</a></>}
-        </p>
+        )}
+
+        <div style={{marginTop:18, borderTop:"1px solid var(--line)", paddingTop:12}}>
+          {mode === "in" ? (
+            <p className="page-sub" style={{margin:0,fontSize:13}}>
+              ¿Eres nuevo en el equipo? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("activate");setStep(1);}} style={{color:"var(--accent)",fontWeight:600}}>Activa tu cuenta aquí</a>
+            </p>
+          ) : (
+            <p className="page-sub" style={{margin:0,fontSize:13}}>
+              ¿Ya tienes cuenta activa? <a href="#" onClick={e=>{e.preventDefault();setMsg(null);setMode("in");}} style={{color:"var(--accent)",fontWeight:600}}>Inicia sesión</a>
+            </p>
+          )}
+        </div>
       </div>
     </div></div>
   );
@@ -493,7 +661,7 @@ function useAllData(key){
   const [err,setErr] = useState(null);
   useEffect(()=>{ let alive=true; (async()=>{
     try{
-      const tables=["team","leaves","guards","windows","courses","rollbacks"];
+      const tables=["team","leaves","guards","windows","courses","rollbacks","mdc_changes"];
       const res=await Promise.all(tables.map(t=>db.from(t).select("*")));
       if(!alive) return;
       const obj={}; tables.forEach((t,i)=> obj[t]=res[i].data||[]);
@@ -516,9 +684,37 @@ function useTable(table,onChange){
 }
 
 /* ---------- exportación ---------- */
+const MDC_EXCEL_COLS = [
+  ["responsable_it", "Responsable IT"],
+  ["celula_fabrica", "Célula / Fábrica"],
+  ["req", "Req."],
+  ["ot", "OT"],
+  ["folio_simba", "Folio SIMBA"],
+  ["tipo_cambio", "Tipo de Cambio"],
+  ["folio_hydra", "Folio Hydra"],
+  ["fecha", "Día de Cambio"],
+  ["responsable_cambio", "Responsable Cambio"],
+  ["responsable_libera", "Responsable Libera"],
+  ["pais", "País"],
+  ["descripcion", "Descripción del Cambio"],
+  ["justificacion", "Justificación del Cambio"],
+  ["el_cambio_es", "El cambio es"],
+  ["sucursales", "Sucursales"],
+  ["area_operaciones", "Área de Operaciones"],
+  ["devsecops", "DevSecOps"],
+  ["esquema_rollback", "Esquema Rollback"],
+  ["guardia_siguiente_nombre", "Guardia Siguiente Día"],
+  ["telefono_contacto", "Teléfono de Contacto"],
+  ["lugar_guardia", "Lugar Guardia"],
+  ["estado", "Resultado"],
+  ["responsable_reverso", "Responsable Reverso"],
+  ["rancher", "Rancher"]
+];
+
 function exportExcel(m,rows){
-  const headers=m.cols.map(c=>c[1]);
-  const body=rows.map(r=>m.cols.map(c=>rawCell(r,c)));
+  const cols = m.table === "mdc_changes" ? MDC_EXCEL_COLS : m.cols;
+  const headers=cols.map(c=>c[1]);
+  const body=rows.map(r=>cols.map(c=>rawCell(r,c)));
   const ws=XLSX.utils.aoa_to_sheet([headers,...body]);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,m.label.slice(0,31));
@@ -541,7 +737,7 @@ function exportPDF(m,rows){
 }
 
 /* ---------- página de módulo ---------- */
-function ModulePage({mkey,perm,onChange}){
+function ModulePage({mkey,perm,onChange,data,currentUserEmail}){
   const m=MODULES[mkey];
   const {rows,loading,err,load}=useTable(m.table,onChange);
   const [q,setQ]=useState("");
@@ -555,16 +751,31 @@ function ModulePage({mkey,perm,onChange}){
 
   async function save(obj){
     const payload={...obj}; delete payload.id; delete payload.created_at;
-    if(obj.id) await db.from(m.table).update(payload).eq("id",obj.id);
-    else await db.from(m.table).insert(payload);
-    setModal(null); load();
+    const { error } = obj.id
+      ? await db.from(m.table).update(payload).eq("id",obj.id)
+      : await db.from(m.table).insert(payload);
+    if(error) {
+      alert("Error al guardar: " + error.message);
+    } else {
+      setModal(null); load();
+    }
   }
   async function remove(id){
     if(!confirm("¿Eliminar este registro?")) return;
-    await db.from(m.table).delete().eq("id",id); load();
+    const { error } = await db.from(m.table).delete().eq("id",id);
+    if(error) {
+      alert("Error al eliminar: " + error.message);
+    } else {
+      load();
+    }
   }
   async function aprobar(r,estado){
-    await db.from(m.table).update({estado}).eq("id",r.id); load();
+    const { error } = await db.from(m.table).update({estado}).eq("id",r.id);
+    if(error) {
+      alert("Error al actualizar estado: " + error.message);
+    } else {
+      load();
+    }
   }
 
   const canApprove = mkey==="leaves" && perm.del;   // Administrador y Líder
@@ -575,6 +786,7 @@ function ModulePage({mkey,perm,onChange}){
       <p className="page-sub">{m.sub}</p>
       {err && <div className="banner">Error: {err}</div>}
       {mkey==="courses" && <CourseRanking rows={rows}/>}
+      {mkey==="rollbacks" && <RollbackRanking rows={rows}/>}
       <div className="section-h">
         <input className="search" placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
         <div style={{display:"flex",gap:8}}>
@@ -594,27 +806,285 @@ function ModulePage({mkey,perm,onChange}){
                 {m.cols.map(c=><td key={c[0]}>{fmt(r[c[0]],c[2])}</td>)}
                 {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
                   {canApprove && r.estado==="Pendiente" && <>
-                    <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={()=>aprobar(r,"Aprobado")}>Aprobar</button>
-                    <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={()=>aprobar(r,"Rechazado")}>Rechazar</button>
+                    <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Aprobado");}} onDoubleClick={(e)=>e.stopPropagation()}>Aprobar</button>
+                    <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Rechazado");}} onDoubleClick={(e)=>e.stopPropagation()}>Rechazar</button>
                   </>}
-                  {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={()=>setModal(r)}>Editar</button>}
-                  {perm.del && <button className="btn danger" onClick={()=>remove(r.id)}><Icon d={I.trash} size={16}/></button>}
+                  {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
+                  {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
                 </td>}
               </tr>
             ))}
           </tbody>
         </table>}
       </div>
-      {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save}/>}
+      {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save} data={data} currentUserEmail={currentUserEmail}/>}
     </div>
   );
 }
 
 /* ---------- modal ---------- */
-function FormModal({m,record,onClose,onSave}){
-  const [form,setForm]=useState(()=>{ const o={...record}; m.fields.forEach(f=>{ if(o[f[0]]===undefined) o[f[0]]=""; }); return o; });
+function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
+  const isMDC = m.table === "mdc_changes";
+  
+  const mdcFields = [
+    "responsable_it", "celula_fabrica", "req", "ot", "folio_simba", "tipo_cambio", 
+    "folio_hydra", "fecha", "responsable_cambio", "responsable_libera", "pais", 
+    "descripcion", "justificacion", "el_cambio_es", "sucursales", "area_operaciones", 
+    "devsecops", "esquema_rollback", "guardia_siguiente_nombre", "telefono_contacto", 
+    "lugar_guardia", "estado", "responsable_reverso", "rancher"
+  ];
+
+  const [form,setForm]=useState(()=>{ 
+    const o={...record}; 
+    if (isMDC) {
+      mdcFields.forEach(f => { 
+        if(o[f]===undefined || o[f]===null) o[f]=""; 
+      });
+      if (!record.id) {
+        o.responsable_it = "Jesus Orlando Munguia Garcia";
+        o.celula_fabrica = "Medios de Disposición de Préstamo";
+        o.lugar_guardia = "Torre 1 Piso 6";
+        o.estado = "Por aplicar"; // Estado por defecto
+      }
+    } else {
+      m.fields.forEach(f=>{ if(o[f[0]]===undefined) o[f[0]]=""; }); 
+    }
+    return o; 
+  });
+
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-  function submit(e){ e.preventDefault(); const clean={...form}; m.fields.forEach(f=>{ if(clean[f[0]]==="") clean[f[0]]=null; }); onSave(clean); }
+
+  const teamList = useMemo(() => {
+    if (!data || !data.team) return [];
+    return data.team.filter(t => t.estado === "Activo").map(t => t.nombre).sort();
+  }, [data]);
+
+  const handleGuardChange = (val) => {
+    set("guardia_siguiente_nombre", val);
+    if (data && data.team) {
+      const guard = data.team.find(t => t.nombre === val);
+      if (guard && guard.telefono) {
+        set("telefono_contacto", guard.telefono);
+      }
+    }
+  };
+
+  function submit(e){ 
+    e.preventDefault(); 
+    const clean={...form}; 
+    if (isMDC) {
+      mdcFields.forEach(f=>{ if(clean[f]==="") clean[f]=null; }); 
+      clean.sistema = clean.celula_fabrica || "Sistema Desconocido";
+      clean.ticket = clean.folio_hydra || clean.folio_simba || clean.ot || clean.req || "";
+    } else {
+      m.fields.forEach(f=>{ if(clean[f[0]]==="") clean[f[0]]=null; }); 
+    }
+    onSave(clean); 
+  }
+
+  if (isMDC) {
+    return (
+      <div className="modal-bg" onClick={onClose}>
+        <form className="modal" style={{width:"860px", maxWidth:"95vw"}} onClick={e=>e.stopPropagation()} onSubmit={submit}>
+          <h3 style={{borderBottom:"1px solid var(--line)",paddingBottom:10,marginBottom:16}}>
+            {record.id ? "Editar" : "Nuevo"} — Mapeo de Cambios (MDC)
+          </h3>
+          
+          <div style={{display:"grid", gridTemplateColumns:"1fr", gap:"16px", maxHeight:"70vh", overflow:"auto", paddingRight:8}}>
+            
+            {/* Grupo 1: Información de Control */}
+            <div style={{borderBottom:"1px solid var(--line)", paddingBottom:14}}>
+              <h4 style={{margin:"0 0 12px",color:"var(--accent)",fontSize:13,textTransform:"uppercase",letterSpacing:".05em"}}>1. Información de Control</h4>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px 16px"}}>
+                <div className="field">
+                  <label>Responsable del área IT</label>
+                  <input type="text" value={form.responsable_it} onChange={e=>set("responsable_it",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Nombre de la célula o fábrica</label>
+                  <input type="text" value={form.celula_fabrica} onChange={e=>set("celula_fabrica",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>País</label>
+                  <select value={form.pais} onChange={e=>set("pais",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="México">México</option>
+                    <option value="LAM">LAM</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Rancher</label>
+                  <select value={form.rancher} onChange={e=>set("rancher",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Rancher Préstamo">Rancher Préstamo</option>
+                    <option value="Rancher Medios De Disp">Rancher Medios De Disp</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Grupo 2: Identificación del Cambio */}
+            <div style={{borderBottom:"1px solid var(--line)", paddingBottom:14}}>
+              <h4 style={{margin:"0 0 12px",color:"var(--accent)",fontSize:13,textTransform:"uppercase",letterSpacing:".05em"}}>2. Identificación del Cambio</h4>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px 16px"}}>
+                <div className="field">
+                  <label>Req.</label>
+                  <input type="text" value={form.req} onChange={e=>set("req",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>OT</label>
+                  <input type="text" value={form.ot} onChange={e=>set("ot",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Folio de SIMBA</label>
+                  <input type="text" value={form.folio_simba} onChange={e=>set("folio_simba",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Tipo de Cambio</label>
+                  <select value={form.tipo_cambio} onChange={e=>set("tipo_cambio",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Sistemas">Sistemas</option>
+                    <option value="Negocio">Negocio</option>
+                  </select>
+                </div>
+                <div className="field" style={{gridColumn:"span 2"}}>
+                  <label>Folio del cambio Hydra</label>
+                  <input type="text" value={form.folio_hydra} onChange={e=>set("folio_hydra",e.target.value)}/>
+                </div>
+              </div>
+            </div>
+
+            {/* Grupo 3: Detalles y Asignación */}
+            <div style={{borderBottom:"1px solid var(--line)", paddingBottom:14}}>
+              <h4 style={{margin:"0 0 12px",color:"var(--accent)",fontSize:13,textTransform:"uppercase",letterSpacing:".05em"}}>3. Detalles y Asignación</h4>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px 16px"}}>
+                <div className="field">
+                  <label>Día de Cambio *</label>
+                  <input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)} required/>
+                </div>
+                <div className="field">
+                  <label>El cambio es</label>
+                  <select value={form.el_cambio_es} onChange={e=>set("el_cambio_es",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Genérico">Genérico</option>
+                    <option value="Parcial">Parcial</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Responsable cambio (Desarrollador)</label>
+                  <select value={form.responsable_cambio} onChange={e=>set("responsable_cambio",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    {teamList.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Responsable libera cambio (Líder de desarrollo)</label>
+                  <select value={form.responsable_libera} onChange={e=>set("responsable_libera",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    {teamList.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="field" style={{gridColumn:"span 2"}}>
+                  <label>Sucursales</label>
+                  <input type="text" value={form.sucursales} onChange={e=>set("sucursales",e.target.value)}/>
+                </div>
+                <div className="field" style={{gridColumn:"span 2"}}>
+                  <label>Descripción del Cambio</label>
+                  <textarea rows="2" value={form.descripcion} onChange={e=>set("descripcion",e.target.value)}/>
+                </div>
+                <div className="field" style={{gridColumn:"span 2"}}>
+                  <label>Justificación del Cambio</label>
+                  <textarea rows="2" value={form.justificacion} onChange={e=>set("justificacion",e.target.value)}/>
+                </div>
+              </div>
+            </div>
+
+            {/* Grupo 4: Operaciones e Implementación */}
+            <div style={{borderBottom:"1px solid var(--line)", paddingBottom:14}}>
+              <h4 style={{margin:"0 0 12px",color:"var(--accent)",fontSize:13,textTransform:"uppercase",letterSpacing:".05em"}}>4. Operaciones e Implementación</h4>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px 16px"}}>
+                <div className="field">
+                  <label>¿En qué área de operaciones se aplicará el cambio?</label>
+                  <select value={form.area_operaciones} onChange={e=>set("area_operaciones",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Oracle">Oracle</option>
+                    <option value="Operaciones LAM">Operaciones LAM</option>
+                    <option value="Operaciones Windows">Operaciones Windows</option>
+                    <option value="Operaciones Unix">Operaciones Unix</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>¿El sistema opera con DevSecOps?</label>
+                  <select value={form.devsecops} onChange={e=>set("devsecops",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>¿Cuál es el esquema de Roll Back?</label>
+                  <select value={form.esquema_rollback} onChange={e=>set("esquema_rollback",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Parametría">Parametría</option>
+                    <option value="Reverso">Reverso</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Resultado de la implementación</label>
+                  <select value={form.estado} onChange={e=>set("estado",e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    <option value="Por aplicar">Por aplicar</option>
+                    <option value="Aplicado">Aplicado</option>
+                    <option value="No aplicado">No aplicado</option>
+                    <option value="Reversado">Reversado</option>
+                    <option value="No aplicado por ventana">No aplicado por ventana</option>
+                  </select>
+                </div>
+                {form.estado === "Reversado" && (
+                  <div className="field" style={{gridColumn:"span 2"}}>
+                    <label>Responsable de quien aplicó el Reverso</label>
+                    <select value={form.responsable_reverso} onChange={e=>set("responsable_reverso",e.target.value)}>
+                      <option value="">Selecciona…</option>
+                      {teamList.map(name => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Grupo 5: Datos de la Guardia */}
+            <div>
+              <h4 style={{margin:"0 0 12px",color:"var(--accent)",fontSize:13,textTransform:"uppercase",letterSpacing:".05em"}}>5. Datos de la Guardia</h4>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px 16px"}}>
+                <div className="field">
+                  <label>Guardia Siguiente día Nombre</label>
+                  <select value={form.guardia_siguiente_nombre} onChange={e=>handleGuardChange(e.target.value)}>
+                    <option value="">Selecciona…</option>
+                    {teamList.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Teléfono de contacto</label>
+                  <input type="text" value={form.telefono_contacto} onChange={e=>set("telefono_contacto",e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Lugar físico de la guardia</label>
+                  <input type="text" value={form.lugar_guardia} onChange={e=>set("lugar_guardia",e.target.value)}/>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          
+          <div className="modal-actions" style={{borderTop:"1px solid var(--line)",paddingTop:14,marginTop:14}}>
+            <button type="button" className="btn ghost" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn">Guardar</button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <form className="modal" onClick={e=>e.stopPropagation()} onSubmit={submit}>
@@ -658,7 +1128,26 @@ function GuardRoster({perm,onChange}){
     return [...list].sort((a,b)=> (a.veces-b.veces) || (a.orden-b.orden))[0].id;
   }
   async function registrar(r){
-    await db.from("guard_roster").update({veces:(r.veces||0)+1, ultima_guardia:new Date().toISOString().slice(0,10)}).eq("id",r.id);
+    const d = new Date();
+    if (r.turno === "Cambios nocturnos" || r.turno === "Guardia nocturna") {
+      d.setDate(d.getDate() - 1);
+    }
+    const today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const { error: err1 } = await db.from("guard_roster").update({veces:(r.veces||0)+1, ultima_guardia:today}).eq("id",r.id);
+    if(err1) {
+      alert("Error al actualizar la rotación: " + err1.message);
+      return;
+    }
+    const { error: err2 } = await db.from("guards").insert({
+      persona: r.persona,
+      tipo: r.turno,
+      fecha_inicio: today,
+      fecha_fin: today,
+      notas: "Registro automático desde rol de guardias"
+    });
+    if(err2) {
+      alert("Rotación actualizada, pero hubo un error al crear el registro en el calendario: " + err2.message);
+    }
     load(); onChange&&onChange();
   }
   async function reiniciar(turno){
@@ -697,7 +1186,7 @@ function GuardRoster({perm,onChange}){
                       <td>{r.ultima_guardia ? new Date(r.ultima_guardia).toLocaleDateString("es") : "—"}</td>
                       <td>{r.veces||0}</td>
                       <td style={{textAlign:"right"}}>
-                        {perm.edit && r.id===nid && <button className="btn sm" onClick={()=>registrar(r)}>Registrar cambio</button>}
+                        {perm.edit && r.id===nid && <button className="btn sm" onClick={()=>registrar(r)}>Registrar Guardia</button>}
                       </td>
                     </tr>
                   ))}
@@ -738,6 +1227,33 @@ function CourseRanking({rows}){
   );
 }
 
+/* ---------- ranking de reversos ---------- */
+function RollbackRanking({rows}){
+  const rank = useMemo(()=>{
+    const m={};
+    rows.forEach(r=>{ const k=(r.responsable||"").trim(); if(k) m[k]=(m[k]||0)+1; });
+    return Object.entries(m).sort((a,b)=> b[1]-a[1]);
+  },[rows]);
+  if(rank.length===0) return null;
+  const max = rank[0][1];
+  return (
+    <div className="card" style={{marginBottom:16}}>
+      <h3 style={{marginTop:0}}>Top Reversos por Responsable <span className="page-sub" style={{fontSize:13}}>· {rows.length} reversos registrados · {rank.length} responsables</span></h3>
+      {rank.map(([resp,n],i)=>(
+        <div key={resp} style={{display:"flex",alignItems:"center",gap:10,margin:"7px 0"}}>
+          <div style={{width:22,color:"var(--muted)",fontSize:13,textAlign:"right"}}>{i+1}</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>{resp}</span><b>{n}</b></div>
+            <div style={{height:8,background:"var(--panel2)",borderRadius:5,overflow:"hidden"}}>
+              <div style={{height:"100%",width:(n/max*100)+"%",background:"var(--red)"}}></div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- campana de notificaciones ---------- */
 function NotifBell({data}){
   const [open,setOpen]=useState(false);
@@ -765,7 +1281,10 @@ function NotifBell({data}){
 }
 
 /* ---------- dashboard ---------- */
-function Dashboard({data,go}){
+function Dashboard({data,go,onRefresh,role}){
+  const [importing, setImporting] = useState(false);
+  const perm = PERMS[role] || {create:false};
+
   if(!data) return (<div><h1 className="page-title">Dashboard</h1><p className="page-sub">Cargando…</p></div>);
   const today=startToday();
   const activos=data.team.filter(p=>p.estado==="Activo").length;
@@ -777,6 +1296,15 @@ function Dashboard({data,go}){
   data.windows.forEach(w=>{ if(w.fecha_hora) eventos.push({fecha:new Date(w.fecha_hora),tipo:"Ventana",txt:w.sistema,estado:w.estado}); });
   data.guards.forEach(g=>{ const f=pd(g.fecha_inicio); if(f) eventos.push({fecha:f,tipo:"Guardia",txt:`${g.persona} · ${g.tipo||""}`,estado:""}); });
   const proximos=eventos.filter(e=>e.fecha>=today).sort((a,b)=>a.fecha-b.fecha).slice(0,6);
+
+  const mdcChanges = data.mdc_changes || [];
+  const mdcHoy = mdcChanges
+    .map(c => ({
+      ...c,
+      parsedFecha: pd(c.fecha)
+    }))
+    .filter(c => c.parsedFecha && c.parsedFecha.getTime() === today.getTime() && c.estado !== 'Cancelado')
+    .sort((a, b) => a.parsedFecha - b.parsedFecha);
 
   const alertas=[];
   computeConflicts(data).forEach(c=>alertas.push(["red",`Choque de agenda: ${c.persona} (${c.date.toLocaleDateString("es",{day:"numeric",month:"short"})})`]));
@@ -790,6 +1318,151 @@ function Dashboard({data,go}){
     ["Guardias asignadas",guardiasAsign,I.guard,"guards"],
     ["Ventanas próximas",ventanasProx,I.wind,"windows"],
   ];
+
+  function mapExcelRow(row) {
+    const keys = Object.keys(row);
+    const findVal = (possibleNames) => {
+      const key = keys.find(k => possibleNames.some(p => k.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === p));
+      return key ? String(row[key]).trim() : null;
+    };
+
+    // Mapeo completo de las 24 columnas solicitadas para MDC
+    const responsable_it = findVal(["responsable it", "responsable del area it", "it manager", "responsable_it"]);
+    const celula_fabrica = findVal(["celula o fabrica", "celula o fabrica.", "celula", "fabrica", "celula/fabrica", "celula_fabrica"]);
+    const req = findVal(["req", "req.", "requerimiento"]);
+    const ot = findVal(["ot", "orden de trabajo"]);
+    const folio_simba = findVal(["folio de simba", "folio simba", "simba"]);
+    const tipo_cambio = findVal(["tipo de cambio", "tipo_cambio", "tipo"]);
+    const folio_hydra = findVal(["folio del cambio hydra", "folio hydra", "hydra"]);
+    
+    // Parsear fecha
+    let fechaRaw = findVal(["dia de cambio", "fecha", "dia", "date", "fecha de cambio", "fecha programada"]);
+    let fecha = null;
+    if (fechaRaw) {
+      if (!isNaN(fechaRaw) && Number(fechaRaw) > 30000) {
+        const dateObj = new Date((Number(fechaRaw) - 25569) * 86400 * 1000);
+        fecha = dateObj.toISOString().slice(0, 10);
+      } else {
+        const d = new Date(fechaRaw);
+        if (!isNaN(d.getTime())) {
+          fecha = d.toISOString().slice(0, 10);
+        } else {
+          const parts = fechaRaw.split("/");
+          if (parts.length === 3) {
+            if (parts[2].length === 4) {
+              fecha = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          }
+        }
+      }
+    }
+
+    const responsable_cambio = findVal(["responsable cambio", "desarrollador", "desarrolladora", "responsable_cambio", "responsable"]);
+    const responsable_libera = findVal(["responsable libera cambio", "responsable libera", "lider", "lider de desarrollo", "responsable_libera"]);
+    const pais = findVal(["pais", "country"]);
+    const descripcion = findVal(["descripcion", "descripcion del cambio", "detalle", "cambio", "description", "actividad", "resumen"]);
+    const justificacion = findVal(["justificacion", "justificacion del cambio", "justificacion_cambio"]);
+    const el_cambio_es = findVal(["el cambio es", "cambio es", "el_cambio_es"]);
+    const sucursales = findVal(["sucursales"]);
+    const area_operaciones = findVal(["area de operaciones", "area de operaciones donde se aplicara el cambio", "area_operaciones"]);
+    const devsecops = findVal(["devsecops", "el sistema opera con devsecops"]);
+    const esquema_rollback = findVal(["rollback", "esquema de rollback", "esquema rollback", "esquema_rollback"]);
+    const guardia_siguiente_nombre = findVal(["guardia siguiente dia nombre", "guardia siguiente", "guardia", "guardia_siguiente_nombre"]);
+    const telefono_contacto = findVal(["telefono de contacto", "telefono", "telefono_contacto"]);
+    const lugar_guardia = findVal(["lugar fisico de la guardia", "lugar", "lugar_guardia"]) || "Torre 1 Piso 6";
+    const estado = findVal(["resultado de la implementacion", "resultado", "estado", "status", "situacion"]) || "No aplicado";
+    const responsable_reverso = findVal(["responsable de quien aplico el reverso", "responsable reverso", "responsable_reverso"]);
+    const rancher = findVal(["rancher"]);
+
+    // Columnas virtuales para mantener compatibilidad en UI/Dashboard
+    const sistema = celula_fabrica || "Sistema Desconocido";
+    const ticket = folio_hydra || folio_simba || ot || req || "";
+
+    const excel_row_id = ticket || `${fecha || 'sindate'}_${sistema.replace(/\s+/g, '_')}_${(responsable_cambio || 'sinresp').replace(/\s+/g, '_')}`;
+
+    return {
+      excel_row_id,
+      responsable_it,
+      celula_fabrica,
+      req,
+      ot,
+      folio_simba,
+      tipo_cambio,
+      folio_hydra,
+      fecha,
+      responsable_cambio,
+      responsable_libera,
+      pais,
+      descripcion,
+      justificacion,
+      el_cambio_es,
+      sucursales,
+      area_operaciones,
+      devsecops,
+      esquema_rollback,
+      guardia_siguiente_nombre,
+      telefono_contacto,
+      lugar_guardia,
+      estado,
+      responsable_reverso,
+      rancher,
+      sistema,
+      ticket
+    };
+  }
+
+  async function handleExcelImport(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const arrayBuffer = evt.target.result;
+        const workbook = XLSX.read(new Uint8Array(arrayBuffer), {type: 'array'});
+        
+        let sheetName = workbook.SheetNames.find(n => n.toUpperCase() === "MDC");
+        if (!sheetName) {
+          sheetName = workbook.SheetNames[0];
+          alert(`No se encontró la pestaña 'MDC'. Se leerán los datos de la pestaña: '${sheetName}'`);
+        }
+        
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        if(jsonData.length === 0){
+          alert("El archivo está vacío o no tiene datos válidos.");
+          setImporting(false);
+          return;
+        }
+        
+        const rowsToUpsert = jsonData.map(mapExcelRow).filter(row => row.sistema && row.sistema !== "Sistema Desconocido");
+        
+        if (rowsToUpsert.length === 0) {
+          alert("No se encontraron registros de cambios válidos en el archivo.");
+          setImporting(false);
+          return;
+        }
+        
+        const { error } = await db.from("mdc_changes").upsert(rowsToUpsert, { onConflict: "excel_row_id" });
+        
+        if (error) {
+          throw error;
+        }
+        
+        alert(`¡Éxito! Se cargaron/actualizaron ${rowsToUpsert.length} cambios desde la pestaña '${sheetName}'.`);
+        if(onRefresh) onRefresh();
+      } catch (err) {
+        alert("Error al importar el archivo Excel: " + (err.message || err));
+      } finally {
+        setImporting(false);
+        e.target.value = ""; 
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   return (
     <div>
       <h1 className="page-title">Dashboard</h1>
@@ -802,7 +1475,7 @@ function Dashboard({data,go}){
           </div>
         ))}
       </div>
-      <div className="grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+      <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))"}}>
         <div className="card">
           <h3 style={{marginTop:0}}>Próximos eventos</h3>
           {proximos.length===0 ? <p className="page-sub">No hay eventos próximos.</p> :
@@ -812,6 +1485,28 @@ function Dashboard({data,go}){
                 <div>
                   <div>{e.tipo}: <b>{e.txt}</b> {e.estado&&<Pill v={e.estado}/>}</div>
                   <div className="page-sub" style={{margin:0}}>{e.fecha.toLocaleDateString("es",{dateStyle:"medium"})}</div>
+                </div>
+              </div>
+            ))}
+        </div>
+        <div className="card">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:0,marginBottom:14}}>
+            <h3 style={{margin:0}}><Icon d={I.wind} size={16}/> Cambios de Hoy (MDC)</h3>
+          </div>
+          {mdcHoy.length===0 ? <p className="page-sub">No hay cambios programados para hoy en MDC.</p> :
+            mdcHoy.map((e,i)=>(
+              <div className="alert-row" key={i}>
+                <span className="dot" style={{background:C.green}}></span>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <b style={{fontSize:13}}>{e.sistema}</b>
+                    {e.ticket && <span style={{fontSize:10,background:"var(--panel2)",padding:"1px 5px",borderRadius:4,color:"var(--muted)",fontWeight:600}}>{e.ticket}</span>}
+                  </div>
+                  <div style={{fontSize:12,marginTop:2,color:"var(--text)"}}>{e.descripcion}</div>
+                  <div className="page-sub" style={{margin:"6px 0 0",fontSize:11,display:"flex",justifyContent:"space-between",color:"var(--muted)"}}>
+                    <span>Resp: {e.responsable_cambio || e.responsable || "Sin asignar"}</span>
+                    <span>{e.parsedFecha.toLocaleDateString("es",{day:"numeric",month:"short"})}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -836,7 +1531,7 @@ function Calendar({data}){
     const push=(d,ev)=>{ const k=dkey(d); (map[k]=map[k]||[]).push(ev); };
     if(data){
       data.leaves.forEach(l=>{ if(l.estado==="Rechazado")return; const a=pd(l.fecha_inicio),b=pd(l.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"amber",label:`${l.persona} · ${l.tipo||"Permiso"}`,persona:l.persona,kind:"leave"}); d.setDate(d.getDate()+1);i++; } });
-      data.guards.forEach(g=>{ const a=pd(g.fecha_inicio),b=pd(g.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"violet",label:`${g.persona} · ${g.tipo||"Guardia"}`,persona:g.persona,kind:"guard"}); d.setDate(d.getDate()+1);i++; } });
+      data.guards.forEach(g=>{ const a=pd(g.fecha_inicio),b=pd(g.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"violet",label:`${g.persona} · ${g.tipo||"Guardia"}${g.hora_inicio ? ' ('+g.hora_inicio+')' : ''}`,persona:g.persona,kind:"guard"}); d.setDate(d.getDate()+1);i++; } });
       data.windows.forEach(w=>{ if(!w.fecha_hora||w.estado==="Cancelada")return; push(new Date(w.fecha_hora),{color:"accent",label:`${w.sistema}`,kind:"window"}); });
     }
     // marcar choques
