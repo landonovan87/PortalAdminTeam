@@ -403,6 +403,8 @@ function Login(){
   const [empNum,setEmpNum] = useState("");
   const [empName,setEmpName] = useState("");
   const [hasEmail,setHasEmail] = useState(false);
+  const [hasPhone,setHasPhone] = useState(false);
+  const [phone,setPhone] = useState("");
   const [repeatPw,setRepeatPw] = useState("");
 
   async function submit(e){
@@ -435,6 +437,9 @@ function Login(){
         setEmpName(emp.nombre);
         setHasEmail(emp.has_email);
         setEmail(emp.correo || "");
+        const phoneVal = emp.telefono || "";
+        setPhone(phoneVal);
+        setHasPhone(phoneVal.trim() !== "");
         setStep(2);
       }
     } catch (err) {
@@ -447,8 +452,13 @@ function Login(){
   async function handleActivate(e){
     e.preventDefault();
     const cleanEmail = email.trim();
+    const cleanPhone = phone.trim();
     if(!cleanEmail){
       setMsg({t:"err", m:"El correo electrónico es obligatorio."});
+      return;
+    }
+    if(!hasPhone && !cleanPhone){
+      setMsg({t:"err", m:"El número de teléfono es obligatorio."});
       return;
     }
     if(pw.length < 6){
@@ -462,15 +472,16 @@ function Login(){
 
     setBusy(true); setMsg(null);
     try {
-      // 1) Si no tiene correo en la base de datos de team, lo actualizamos vía RPC
-      if(!hasEmail){
+      // 1) Si no tiene correo o teléfono en la base de datos de team, lo actualizamos vía RPC
+      if(!hasEmail || !hasPhone){
         const { data: updated, error: updateErr } = await db.rpc("activate_employee_email", { 
           emp_num: empNum.trim(), 
-          emp_email: cleanEmail 
+          emp_email: cleanEmail,
+          emp_phone: hasPhone ? null : cleanPhone
         });
         if (updateErr) throw updateErr;
         if (!updated) {
-          throw new Error("No se pudo asociar el correo a tu número de empleado.");
+          throw new Error("No se pudo asociar la información a tu número de empleado.");
         }
       }
 
@@ -547,6 +558,24 @@ function Login(){
                   {!hasEmail && (
                     <small style={{fontSize:11, color:"var(--muted)", marginTop:4, display:"block"}}>
                       No tienes un correo registrado. Ingresa el correo con el que deseas acceder.
+                    </small>
+                  )}
+                </div>
+
+                <div className="field" style={{textAlign:"left"}}>
+                  <label>Teléfono <span style={{color:"var(--red)"}}>*</span></label>
+                  <input 
+                    type="text" 
+                    value={phone} 
+                    onChange={e=>setPhone(e.target.value)} 
+                    placeholder="Ej. 5512345678" 
+                    required 
+                    disabled={hasPhone}
+                    style={hasPhone ? {background:"var(--panel2)", color:"var(--muted)", cursor:"not-allowed"} : {}}
+                  />
+                  {!hasPhone && (
+                    <small style={{fontSize:11, color:"var(--muted)", marginTop:4, display:"block"}}>
+                      No tienes un teléfono registrado. Es obligatorio para recibir avisos y autorizaciones en tu cel.
                     </small>
                   )}
                 </div>
