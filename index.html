@@ -1480,7 +1480,7 @@ function DashboardLineChart({ title, chartData, areas, colors }) {
   });
   maxY = Math.ceil(maxY / 4) * 4; // Ajustar a múltiplo de 4 para divisiones estéticas
 
-  const getX = (index) => padding.left + (index * (width - padding.left - padding.right) / 3);
+  const getX = (index) => padding.left + (index * (width - padding.left - padding.right) / (chartData.length > 1 ? chartData.length - 1 : 1));
   const getY = (value) => height - padding.bottom - (value * (height - padding.top - padding.bottom) / maxY);
 
   return (
@@ -1541,6 +1541,56 @@ function DashboardLineChart({ title, chartData, areas, colors }) {
   );
 }
 
+function DashboardSuccessRanking({ data }) {
+  return (
+    <div className="card" style={{padding:"16px 20px", display:"flex", flexDirection:"column", gap:14, animation:"fadeIn 0.2s ease"}}>
+      <h3 style={{margin:0, fontSize:13, fontWeight:600, color:"var(--text)"}}>
+        Top de Eficiencia por Área (Último Mes)
+      </h3>
+      <p style={{margin:"-8px 0 0", fontSize:11, color:"var(--muted)"}}>
+        Cambios aplicados con éxito que no requirieron reverso.
+      </p>
+      
+      <div style={{display:"flex", flexDirection:"column", gap:12, marginTop:4, flex:1, justifyContent:"center"}}>
+        {data.map((item, index) => {
+          const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "🎖️";
+          const maxExitosos = Math.max(...data.map(d => d.exitosos)) || 1;
+          const pctWidth = Math.max(5, (item.exitosos / maxExitosos) * 100);
+          
+          return (
+            <div key={item.area} style={{display:"flex", flexDirection:"column", gap:5}}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:12}}>
+                <div style={{display:"flex", alignItems:"center", gap:6, fontWeight:500}}>
+                  <span style={{fontSize:14}}>{medal}</span>
+                  <span style={{color:"var(--text)", fontSize:11}}>{item.area}</span>
+                </div>
+                <div style={{fontSize:11, color:"var(--muted)", display:"flex", gap:8}}>
+                  <span style={{fontWeight:600, color:"var(--green)"}}>{item.exitosos} exitosos</span>
+                  <span>({item.rate}% éxito)</span>
+                </div>
+              </div>
+              
+              <div style={{width:"100%", height:8, background:"var(--line)", borderRadius:4, overflow:"hidden", display:"flex"}}>
+                <div style={{
+                  width: `${pctWidth}%`,
+                  height: "100%",
+                  background: index === 0 ? "linear-gradient(90deg, var(--green), #10b981)" : "var(--accent)",
+                  borderRadius: 4,
+                  transition: "width 0.5s ease"
+                }}></div>
+              </div>
+              <div style={{fontSize:10, color:"var(--muted)", display:"flex", justifyContent:"space-between", marginTop:2}}>
+                <span>Total cambios: {item.changes}</span>
+                {item.rollbacks > 0 && <span style={{color:"var(--red)"}}>Reversos: {item.rollbacks}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- dashboard ---------- */
 function Dashboard({data,go,onRefresh,role}){
   const [importing, setImporting] = useState(false);
@@ -1582,25 +1632,73 @@ function Dashboard({data,go,onRefresh,role}){
     "Core de Pagos y Préstamo": "var(--amber)"
   };
 
-  const getWeekIndex = (date, todayVal) => {
-    const diffTime = todayVal - date;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays >= 0 && diffDays < 7) return 3;   // Semana 4 (más reciente)
-    if (diffDays >= 7 && diffDays < 14) return 2;  // Semana 3
-    if (diffDays >= 14 && diffDays < 21) return 1; // Semana 2
-    if (diffDays >= 21 && diffDays < 28) return 0; // Semana 1 (más antigua)
-    return -1;
+  const getWeekNumber = (d) => {
+    const target = new Date(d.valueOf());
+    const dayNr = (d.getDay() + 6) % 7; // Lunes = 0, Domingo = 6
+    target.setDate(target.getDate() - dayNr + 3); // Jueves más cercano
+    const firstThursday = target.valueOf();
+    target.setMonth(0, 1);
+    if (target.getDay() !== 4) {
+      target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+    }
+    return 1 + Math.ceil((firstThursday - target) / 604800000);
+  };
+
+  // Determinar la fecha de referencia para las gráficas (la fecha del último cambio o rollback en la base de datos)
+  let referenceDate = null;
+  mdcChanges.forEach(c => {
+    if (c.fecha) {
+      const d = pd(c.fecha);
+      if (d && (!referenceDate || d > referenceDate)) referenceDate = d;
+    }
+  });
+  (data.rollbacks || []).forEach(r => {
+    if (r.fecha) {
+      const d = pd(r.fecha);
+      if (d && (!referenceDate || d > referenceDate)) referenceDate = d;
+    }
+  });
+  if (!referenceDate) referenceDate = today;
+
+  const lastWeek = getWeekNumber(referenceDate);
+  const weekNumbers = [
+    getWeekNumber(new Date(referenceDate.getTime() - 21 * 24 * 60 * 60 * 1000)),
+    getWeekNumber(new Date(referenceDate.getTime() - 14 * 24 * 60 * 60 * 1000)),
+    getWeekNumber(new Date(referenceDate.getTime() - 7 * 24 * 60 * 60 * 1000)),
+    lastWeek
+  ];
+
+  const normName = n => (n||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim();
+  const firstTwo = n => normName(n).split(" ").slice(0,2).join(" ");
+  const findMemberByName = (name) => {
+    if (!name || !data.team) return null;
+    const n = normName(name);
+    const n2 = firstTwo(name);
+    // 1. Match exacto
+    let m = data.team.find(t => normName(t.nombre) === n);
+    if (m) return m;
+    // 2. Match por primeras dos palabras (Nombre Apellido) — cubre "Ivan Navarrete" vs "Ivan Navarrete Garcia"
+    if (n2.split(" ").length >= 2) {
+      m = data.team.find(t => firstTwo(t.nombre) === n2);
+      if (m) return m;
+    }
+    // 3. Contención: el nombre corto del Excel está dentro del nombre largo del equipo
+    m = data.team.find(t => {
+      const tn = normName(t.nombre);
+      return tn.includes(n) || (n.length > 6 && n.includes(tn));
+    });
+    return m || null;
   };
 
   const getChangeArea = (c) => {
-    // 1. Buscar por responsable_cambio en el equipo
+    // 1. Buscar por responsable_cambio (gerente de área) en el equipo
     if (c.responsable_cambio) {
-      const member = data.team?.find(t => t.nombre === c.responsable_cambio);
+      const member = findMemberByName(c.responsable_cambio);
       if (member && member.area) return member.area;
     }
-    // 2. Buscar por responsable_libera (líder) en el equipo
+    // 2. Fallback: responsable_libera en el equipo
     if (c.responsable_libera) {
-      const member = data.team?.find(t => t.nombre === c.responsable_libera);
+      const member = findMemberByName(c.responsable_libera);
       if (member && member.area) return member.area;
     }
     // 3. Fallback basado en celula_fabrica o texto
@@ -1627,7 +1725,7 @@ function Dashboard({data,go,onRefresh,role}){
     }
     // 2. Buscar por responsable del reverso en la tabla team
     if (r.responsable) {
-      const member = data.team?.find(t => t.nombre === r.responsable);
+      const member = findMemberByName(r.responsable);
       if (member && member.area) return member.area;
     }
     // 3. Heurística basada en el texto del release
@@ -1640,46 +1738,86 @@ function Dashboard({data,go,onRefresh,role}){
     return null;
   };
 
-  const changesData = [
-    { name: "Semana 1", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 2", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 3", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 4", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 }
-  ];
+  const changesData = weekNumbers.map(wn => ({
+    name: `Semana ${wn}`,
+    "LAM": 0,
+    "Plataformas y Habilitadores": 0,
+    "Canales Transaccionales": 0,
+    "Core de Pagos y Préstamo": 0
+  }));
 
   mdcChanges.forEach(c => {
     if (!c.fecha) return;
     const date = pd(c.fecha);
     if (!date) return;
-    const weekIdx = getWeekIndex(date, today);
-    if (weekIdx !== -1) {
+    const wNum = getWeekNumber(date);
+    const idx = weekNumbers.indexOf(wNum);
+    if (idx !== -1) {
       const area = getChangeArea(c);
       if (area && AREAS.includes(area)) {
-        changesData[weekIdx][area] += 1;
+        changesData[idx][area] += 1;
       }
     }
   });
 
   const rollbacksList = data.rollbacks || [];
-  const rollbacksData = [
-    { name: "Semana 1", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 2", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 3", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
-    { name: "Semana 4", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 }
-  ];
+  const rollbacksData = weekNumbers.map(wn => ({
+    name: `Semana ${wn}`,
+    "LAM": 0,
+    "Plataformas y Habilitadores": 0,
+    "Canales Transaccionales": 0,
+    "Core de Pagos y Préstamo": 0
+  }));
 
   rollbacksList.forEach(r => {
     if (!r.fecha) return;
     const date = pd(r.fecha);
     if (!date) return;
-    const weekIdx = getWeekIndex(date, today);
-    if (weekIdx !== -1) {
+    const wNum = getWeekNumber(date);
+    const idx = weekNumbers.indexOf(wNum);
+    if (idx !== -1) {
       const area = getRollbackArea(r);
       if (area && AREAS.includes(area)) {
-        rollbacksData[weekIdx][area] += 1;
+        rollbacksData[idx][area] += 1;
       }
     }
   });
+
+  // Calcular cambios y reversos exitosos (sin reverso) por área en el último mes
+  const areasSuccess = AREAS.map(area => {
+    let changes = 0;
+    mdcChanges.forEach(c => {
+      if (!c.fecha) return;
+      const date = pd(c.fecha);
+      if (!date) return;
+      const wNum = getWeekNumber(date);
+      if (weekNumbers.includes(wNum)) {
+        if (getChangeArea(c) === area) changes++;
+      }
+    });
+
+    let rollbacks = 0;
+    rollbacksList.forEach(r => {
+      if (!r.fecha) return;
+      const date = pd(r.fecha);
+      if (!date) return;
+      const wNum = getWeekNumber(date);
+      if (weekNumbers.includes(wNum)) {
+        if (getRollbackArea(r) === area) rollbacks++;
+      }
+    });
+
+    const exitosos = Math.max(0, changes - rollbacks);
+    const rate = changes > 0 ? Math.round((exitosos / changes) * 100) : 100;
+
+    return {
+      area,
+      changes,
+      rollbacks,
+      exitosos,
+      rate
+    };
+  }).sort((a, b) => b.exitosos - a.exitosos || b.rate - a.rate);
 
   const kpis=[
     ["Personal activo",activos,I.team,"team"],
@@ -1690,26 +1828,31 @@ function Dashboard({data,go,onRefresh,role}){
 
   function mapExcelRow(row) {
     const keys = Object.keys(row);
+    // Normaliza headers: min\u00fasculas, sin acentos, sin saltos de l\u00ednea, espacios colapsados
+    const normKey = k => k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\n\r]+/g, " ").replace(/\s+/g, " ").trim();
     const findVal = (possibleNames) => {
-      const key = keys.find(k => possibleNames.some(p => k.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === p));
-      return key ? String(row[key]).trim() : null;
+      const key = keys.find(k => possibleNames.some(p => normKey(k) === p));
+      const val = key ? row[key] : null;
+      if (val === null || val === undefined) return null;
+      return String(val).trim();
     };
 
     // Mapeo completo de las 24 columnas solicitadas para MDC
-    const responsable_it = findVal(["responsable it", "responsable del area it", "it manager", "responsable_it"]);
-    const celula_fabrica = findVal(["celula o fabrica", "celula o fabrica.", "celula", "fabrica", "celula/fabrica", "celula_fabrica"]);
-    const req = findVal(["req", "req.", "requerimiento"]);
+    const responsable_it = findVal(["nombre del responsable del area it", "responsable it", "responsable del area it", "it manager", "responsable_it"]);
+    const celula_fabrica = findVal(["nombre de la celula o fabrica.", "nombre de la celula o fabrica", "celula o fabrica", "celula o fabrica.", "celula", "fabrica", "celula/fabrica", "celula_fabrica"]);
+    const req = findVal(["req.", "req", "requerimiento"]);
     const ot = findVal(["ot", "orden de trabajo"]);
     const folio_simba = findVal(["folio de simba", "folio simba", "simba"]);
-    const tipo_cambio = findVal(["tipo de cambio", "tipo_cambio", "tipo"]);
+    const tipo_cambio = findVal(["tipo de cambio (sistemas/ negocio)", "tipo de cambio", "tipo_cambio", "tipo"]);
     const folio_hydra = findVal(["folio del cambio hydra", "folio hydra", "hydra"]);
-    
+
     // Parsear fecha
     let fechaRaw = findVal(["dia de cambio", "fecha", "dia", "date", "fecha de cambio", "fecha programada"]);
     let fecha = null;
     if (fechaRaw) {
       if (!isNaN(fechaRaw) && Number(fechaRaw) > 30000) {
-        const dateObj = new Date((Number(fechaRaw) - 25569) * 86400 * 1000);
+        // Serial de Excel \u2192 fecha UTC
+        const dateObj = new Date(Math.round((Number(fechaRaw) - 25569) * 86400 * 1000));
         fecha = dateObj.toISOString().slice(0, 10);
       } else {
         const d = new Date(fechaRaw);
@@ -1726,21 +1869,31 @@ function Dashboard({data,go,onRefresh,role}){
       }
     }
 
-    const responsable_cambio = findVal(["responsable cambio", "desarrollador", "desarrolladora", "responsable_cambio", "responsable"]);
-    const responsable_libera = findVal(["responsable libera cambio", "responsable libera", "lider", "lider de desarrollo", "responsable_libera"]);
+    // Columna combinada "Responsable cambio / Responsable libera cambio" \u2192 split por "/"
+    const respCombinado = findVal(["responsable cambio responsable libera cambio.", "responsable cambio responsable libera cambio"]);
+    let responsable_cambio, responsable_libera;
+    if (respCombinado) {
+      const partes = respCombinado.split("/").map(s => s.trim());
+      responsable_cambio = partes[0] || null;
+      responsable_libera = partes[1] || null;
+    } else {
+      responsable_cambio = findVal(["responsable cambio", "desarrollador", "desarrolladora", "responsable_cambio"]);
+      responsable_libera = findVal(["responsable libera cambio", "responsable libera", "lider de desarrollo", "responsable_libera"]);
+    }
+
     const pais = findVal(["pais", "country"]);
-    const descripcion = findVal(["descripcion", "descripcion del cambio", "detalle", "cambio", "description", "actividad", "resumen"]);
-    const justificacion = findVal(["justificacion", "justificacion del cambio", "justificacion_cambio"]);
-    const el_cambio_es = findVal(["el cambio es", "cambio es", "el_cambio_es"]);
+    const descripcion = findVal(["descripcion del cambio", "descripcion", "detalle", "description", "actividad", "resumen"]);
+    const justificacion = findVal(["justificacion del cambio", "justificacion", "justificacion_cambio"]);
+    const el_cambio_es = findVal(["el cambio es:", "el cambio es", "cambio es", "el_cambio_es"]);
     const sucursales = findVal(["sucursales"]);
-    const area_operaciones = findVal(["area de operaciones", "area de operaciones donde se aplicara el cambio", "area_operaciones"]);
-    const devsecops = findVal(["devsecops", "el sistema opera con devsecops"]);
-    const esquema_rollback = findVal(["rollback", "esquema de rollback", "esquema rollback", "esquema_rollback"]);
-    const guardia_siguiente_nombre = findVal(["guardia siguiente dia nombre", "guardia siguiente", "guardia", "guardia_siguiente_nombre"]);
-    const telefono_contacto = findVal(["telefono de contacto", "telefono", "telefono_contacto"]);
-    const lugar_guardia = findVal(["lugar fisico de la guardia", "lugar", "lugar_guardia"]) || "Torre 1 Piso 6";
-    const estado = findVal(["resultado de la implementacion", "resultado", "estado", "status", "situacion"]) || "No aplicado";
-    const responsable_reverso = findVal(["responsable de quien aplico el reverso", "responsable reverso", "responsable_reverso"]);
+    const area_operaciones = findVal(["\u00bfen que area de operaciones se aplicara el cambio?", "area de operaciones donde se aplicara el cambio", "area de operaciones", "area_operaciones"]);
+    const devsecops = findVal(["\u00bfel sistema opera con devsecops?", "el sistema opera con devsecops", "devsecops"]);
+    const esquema_rollback = findVal(["\u00bfcual es el esquema de roll back?", "esquema de rollback", "esquema rollback", "rollback", "esquema_rollback"]);
+    const guardia_siguiente_nombre = findVal(["guardia siguiente dia: nombre completo", "guardia siguiente dia nombre", "guardia siguiente", "guardia_siguiente_nombre"]);
+    const telefono_contacto = findVal(["numero de contacto", "telefono de contacto", "telefono", "telefono_contacto"]);
+    const lugar_guardia = findVal(["lugar fisico de la guardia", "lugar_guardia"]) || "Torre 1 Piso 6";
+    const estado = findVal(["resultado de la implementacion:", "resultado de la implementacion", "resultado", "estado", "status", "situacion"]) || "No aplicado";
+    const responsable_reverso = findVal(["responsable de quien aplico el reverso.", "responsable de quien aplico el reverso", "responsable reverso", "responsable_reverso"]);
     const rancher = findVal(["rancher"]);
 
     // Columnas virtuales para mantener compatibilidad en UI/Dashboard
@@ -1846,9 +1999,10 @@ function Dashboard({data,go,onRefresh,role}){
       </div>
       
       {/* Gráficas de Línea de Cambios y Reverso por Área */}
-      <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(400px, 1fr))", marginBottom:18}}>
+      <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))", marginBottom:18}}>
         <DashboardLineChart title="Cambios por Área (Último Mes)" chartData={changesData} areas={AREAS} colors={chartColors} />
         <DashboardLineChart title="Reversos por Área (Último Mes)" chartData={rollbacksData} areas={AREAS} colors={chartColors} />
+        <DashboardSuccessRanking data={areasSuccess} />
       </div>
 
       <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))"}}>
