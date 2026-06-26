@@ -190,11 +190,11 @@ const MODULES = {
     search:["numero_empleado","nombre","rol","area","correo","lider"] },
   leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
     cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["backup","Backup"],["estado","Estado","pill"],["notas","Notas"]],
-    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["backup","Persona de Respaldo (Backup)","select_team"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
+    fields:[["persona","Persona","select_team",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["backup","Persona de Respaldo (Backup)","select_team"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
     search:["persona","tipo","backup"] },
   guards:{ table:"guards", label:"Guardias", icon:I.guard, title:"Guardias / On-call", sub:"Asignación de turnos de guardia y soporte",
     cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["hora_inicio","Hora inicio"],["fecha_fin","Fin"],["dia_reposicion","Día Reposición"],["estado_reposicion","Estado Reposición","pill"],["notas","Notas"]],
-    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["hora_inicio","Hora inicio","time"],["fecha_fin","Fecha fin","date"],["dia_reposicion","Día de Reposición","date"],["estado_reposicion","Estado Día Reposición","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
+    fields:[["persona","Persona","select_team",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["hora_inicio","Hora inicio","time"],["fecha_fin","Fecha fin","date"],["dia_reposicion","Día de Reposición","date"],["estado_reposicion","Estado Día Reposición","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
     search:["persona","tipo","estado_reposicion"] },
   windows:{ table:"windows", label:"Ventanas", icon:I.wind, title:"Ventanas de mantenimiento", sub:"Planeación y seguimiento de mantenimientos",
     cols:[["sistema","Sistema"],["turno","Turno"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
@@ -202,11 +202,11 @@ const MODULES = {
     search:["sistema","responsable","turno"] },
   courses:{ table:"courses", label:"Cursos", icon:I.course, title:"Cursos", sub:"Capacitación y certificaciones del equipo",
     cols:[["persona","Persona"],["curso","Curso"],["semana","Semana"],["proveedor","Proveedor"],["fecha","Fecha"],["estado","Estado","pill"]],
-    fields:[["persona","Persona","text",true],["curso","Nombre del curso","text"],["semana","Semana","number"],["proveedor","Proveedor","text"],["fecha","Fecha","date"],["estado","Estado","select",false,CAT.estadoCurso]],
+    fields:[["persona","Persona","select_team",true],["curso","Nombre del curso","text"],["semana","Semana","number"],["proveedor","Proveedor","text"],["fecha","Fecha","date"],["estado","Estado","select",false,CAT.estadoCurso]],
     search:["persona","curso","proveedor"] },
   rollbacks:{ table:"rollbacks", label:"Reversos", icon:I.roll, title:"Reversos / Rollbacks", sub:"Registro y control de reversos de cambios o despliegues",
     cols:[["release","Release / cambio"],["responsable","Responsable"],["fecha","Fecha"],["motivo","Motivo"],["estado","Estado","pill"],["resultado","Resultado"]],
-    fields:[["release","Release / cambio","text",true],["responsable","Responsable","text"],["fecha","Fecha","date"],["motivo","Motivo","textarea"],["resultado","Resultado","text"],["estado","Estado","select",false,CAT.estadoReverso]],
+    fields:[["release","Release / cambio","text",true],["responsable","Responsable","select_team"],["fecha","Fecha","date"],["motivo","Motivo","textarea"],["resultado","Resultado","text"],["estado","Estado","select",false,CAT.estadoReverso]],
     search:["release","responsable"] },
   mdc:{ table:"mdc_changes", label:"Cambios", icon:I.wind, title:"Mapeo de Cambios (MDC)", sub:"Registro y control del mapeo de cambios a producción",
     cols:[["fecha","Día de Cambio"],["sistema","Sistema"],["ticket","Ticket / RFC"],["responsable_cambio","Responsable"],["estado","Resultado","pill"]],
@@ -901,8 +901,21 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail,role}){
 
   const teamList = useMemo(() => {
     if (!data || !data.team) return [];
-    return data.team.filter(t => t.estado === "Activo").map(t => t.nombre).sort();
-  }, [data]);
+    const active = data.team.filter(t => t.estado === "Activo");
+    
+    // Si es Administrador, ve a todos
+    if (role === "Administrador") {
+      return active.map(t => t.nombre).sort();
+    }
+    
+    // Buscar su área basada en el correo del usuario logueado
+    const currentUser = active.find(t => t.correo && t.correo.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+    if (currentUser && currentUser.area) {
+      return active.filter(t => t.area === currentUser.area).map(t => t.nombre).sort();
+    }
+    
+    return active.map(t => t.nombre).sort();
+  }, [data, currentUserEmail, role]);
 
   const isDisabled = (key) => {
     const userRole = role;
@@ -1187,24 +1200,24 @@ function GuardRoster({perm,onChange,data,currentUserEmail,role}){
   const [err,setErr] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [selectedPersona, setSelectedPersona] = useState("");
-  const [teamNames, setTeamNames] = useState([]);
-
-  async function load(){
-    const {data,error} = await db.from("guard_roster").select("*").order("orden",{ascending:true});
-    if(error) setErr(error.message); else { setRows(data||[]); setErr(null); }
-  }
+  const teamNames = useMemo(() => {
+    if (!data || !data.team) return [];
+    const active = data.team.filter(t => t.estado === "Activo");
+    
+    if (role === "Administrador") {
+      return active.map(t => t.nombre).sort();
+    }
+    
+    const currentUser = active.find(t => t.correo && t.correo.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+    if (currentUser && currentUser.area) {
+      return active.filter(t => t.area === currentUser.area).map(t => t.nombre).sort();
+    }
+    
+    return active.map(t => t.nombre).sort();
+  }, [data, currentUserEmail, role]);
 
   useEffect(()=>{
     load();
-    if (db) {
-      db.from("team")
-        .select("nombre")
-        .eq("estado", "Activo")
-        .order("nombre", { ascending: true })
-        .then(({ data }) => {
-          if (data) setTeamNames(data.map(t => t.nombre));
-        });
-    }
   },[]);
 
   const turnos = ["Cambios nocturnos","Guardia matutina"];
