@@ -47,6 +47,7 @@
   .page-title{font-size:24px;font-weight:700;margin:0 0 4px;}
   .page-sub{color:var(--muted);margin:0 0 22px;font-size:14px;}
   .grid{display:grid;gap:16px;}
+  .grid-2{grid-template-columns:1fr 1fr;}
   .kpis{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
   .kpi .n{font-size:30px;font-weight:700;}
@@ -97,9 +98,9 @@
   /* calendario */
   .cal-bar{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
   .cal-bar h2{margin:0;font-size:18px;text-transform:capitalize;}
-  .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
+  .cal-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:6px;}
   .cal-head div{color:var(--muted);font-size:12px;text-align:center;font-weight:600;}
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;}
   .cal-cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;min-height:96px;padding:5px;}
   .cal-cell.off{opacity:.35;}
   .cal-cell.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
@@ -114,6 +115,7 @@
     .sidebar{width:100%;height:auto;position:static;flex-direction:row;flex-wrap:wrap;}
     .main{padding:14px;}
     .cal-cell{min-height:70px;}
+    .grid-2{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -183,17 +185,17 @@ function Icon({d,size=18}){return <svg width={size} height={size} viewBox="0 0 2
 /* ---------- módulos ---------- */
 const MODULES = {
   team:{ table:"team", label:"Equipo", icon:I.team, title:"Equipo", sub:"Registro del personal del equipo de TI",
-    cols:[["numero_empleado","N° empleado"],["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["estado","Estado","pill"]],
-    fields:[["numero_empleado","N° empleado","text",true],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text"],["estado","Estado","select",false,CAT.estadoPersona]],
-    search:["numero_empleado","nombre","rol","area","correo"] },
+    cols:[["numero_empleado","N° empleado"],["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["lider","Líder de Equipo"],["estado","Estado","pill"]],
+    fields:[["numero_empleado","N° empleado","text",true],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text",true],["lider","Líder de Equipo","select_team"],["estado","Estado","select",false,CAT.estadoPersona]],
+    search:["numero_empleado","nombre","rol","area","correo","lider"] },
   leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
-    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["estado","Estado","pill"],["notas","Notas"]],
-    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
-    search:["persona","tipo"] },
+    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["backup","Backup"],["estado","Estado","pill"],["notas","Notas"]],
+    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoPermiso],["fecha_inicio","Fecha inicio","date"],["fecha_fin","Fecha fin","date"],["backup","Persona de Respaldo (Backup)","select_team"],["estado","Estado","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
+    search:["persona","tipo","backup"] },
   guards:{ table:"guards", label:"Guardias", icon:I.guard, title:"Guardias / On-call", sub:"Asignación de turnos de guardia y soporte",
-    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["hora_inicio","Hora inicio"],["fecha_fin","Fin"],["notas","Notas"]],
-    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["hora_inicio","Hora inicio","time"],["fecha_fin","Fecha fin","date"],["notas","Notas","textarea"]],
-    search:["persona","tipo"] },
+    cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["hora_inicio","Hora inicio"],["fecha_fin","Fin"],["dia_reposicion","Día Reposición"],["estado_reposicion","Estado Reposición","pill"],["notas","Notas"]],
+    fields:[["persona","Persona","text",true],["tipo","Tipo","select",false,CAT.tipoGuardia],["fecha_inicio","Fecha inicio","date"],["hora_inicio","Hora inicio","time"],["fecha_fin","Fecha fin","date"],["dia_reposicion","Día de Reposición","date"],["estado_reposicion","Estado Día Reposición","select",false,CAT.estadoPermiso],["notas","Notas","textarea"]],
+    search:["persona","tipo","estado_reposicion"] },
   windows:{ table:"windows", label:"Ventanas", icon:I.wind, title:"Ventanas de mantenimiento", sub:"Planeación y seguimiento de mantenimientos",
     cols:[["sistema","Sistema"],["turno","Turno"],["responsable","Responsable"],["fecha_hora","Fecha y hora","dt"],["descripcion","Descripción"],["estado","Estado","pill"]],
     fields:[["sistema","Sistema / servicio","text",true],["turno","Turno","select",false,CAT.turnoVentana],["responsable","Responsable","text"],["fecha_hora","Fecha y hora","datetime-local"],["descripcion","Descripción","textarea"],["estado","Estado","select",false,CAT.estadoVentana]],
@@ -213,9 +215,9 @@ const MODULES = {
 };
 
 /* ---------- utilidades de fecha ---------- */
-function pd(s){ if(!s) return null; const p=String(s).slice(0,10).split("-").map(Number); return new Date(p[0],p[1]-1,p[2]); }
+function pd(s){ if(!s) return null; const p=String(s).slice(0,10).split("-").map(Number); return new Date(p[0],p[1]-1,p[2],12,0,0); }
 function dkey(d){ return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
-function startToday(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
+function startToday(){ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),t.getDate(),12,0,0); }
 function fmt(val,kind){
   if(val===null||val===undefined||val==="") return "—";
   if(kind==="pill") return <Pill v={val}/>;
@@ -336,9 +338,9 @@ function Shell({role,email,onLogout}){
         {err && <div className="banner">Error al conectar con Supabase: {err}</div>}
         {view==="dashboard" ? <Dashboard data={data} go={setView} onRefresh={bump} role={role}/> :
          view==="calendar"  ? <Calendar data={data}/> :
-         view==="roster"    ? <GuardRoster perm={perm} onChange={bump}/> :
+         view==="roster"    ? <GuardRoster perm={perm} onChange={bump} data={data} currentUserEmail={email} role={role}/> :
          view==="users"     ? <UsersPage/> :
-         <ModulePage key={view} mkey={view} perm={perm} onChange={bump} data={data} currentUserEmail={email}/>}
+         <ModulePage key={view} mkey={view} perm={perm} onChange={bump} data={data} currentUserEmail={email} role={role}/>}
       </main>
     </div>
   );
@@ -363,10 +365,10 @@ function UsersPage(){
       <h1 className="page-title">Usuarios</h1>
       <p className="page-sub">Asigna el rol de cada persona. Los permisos se aplican en la base de datos.</p>
       {err && <div className="banner">Error: {err}</div>}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div className="card" style={{padding:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         {rows===null ? <div className="empty">Cargando…</div> :
          rows.length===0 ? <div className="empty">Aún no hay usuarios registrados.</div> :
-        <table>
+        <table style={{minWidth:"450px"}}>
           <thead><tr><th>Correo</th><th>Rol</th><th>Alta</th></tr></thead>
           <tbody>
             {rows.map(u=>(
@@ -737,7 +739,7 @@ function exportPDF(m,rows){
 }
 
 /* ---------- página de módulo ---------- */
-function ModulePage({mkey,perm,onChange,data,currentUserEmail}){
+function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
   const m=MODULES[mkey];
   const {rows,loading,err,load}=useTable(m.table,onChange);
   const [q,setQ]=useState("");
@@ -769,8 +771,9 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail}){
       load();
     }
   }
-  async function aprobar(r,estado){
-    const { error } = await db.from(m.table).update({estado}).eq("id",r.id);
+  async function aprobar(r,estadoVal){
+    const fieldName = m.table === "guards" ? "estado_reposicion" : "estado";
+    const { error } = await db.from(m.table).update({[fieldName]: estadoVal}).eq("id",r.id);
     if(error) {
       alert("Error al actualizar estado: " + error.message);
     } else {
@@ -778,7 +781,7 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail}){
     }
   }
 
-  const canApprove = mkey==="leaves" && perm.del;   // Administrador y Líder
+  const canApprove = (mkey==="leaves" || mkey==="guards") && perm.del;   // Administrador y Líder
   const showActions = perm.edit || perm.del || canApprove;
   return (
     <div>
@@ -795,35 +798,44 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail}){
           {perm.create && <button className="btn" onClick={()=>setModal({})}><Icon d={I.plus} size={16}/> Agregar</button>}
         </div>
       </div>
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div className="card" style={{padding:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading ? <div className="empty">Cargando…</div> :
          filtered.length===0 ? <div className="empty">Sin registros.</div> :
-        <table>
+        <table style={{minWidth: `${m.cols.length * 115 + (showActions ? 130 : 0)}px`}}>
           <thead><tr>{m.cols.map(c=><th key={c[0]}>{c[1]}</th>)}{showActions&&<th></th>}</tr></thead>
           <tbody>
-            {filtered.map(r=>(
-              <tr key={r.id} onDoubleClick={()=>perm.edit&&setModal(r)} style={{cursor:perm.edit?"pointer":"default"}}>
-                {m.cols.map(c=><td key={c[0]}>{fmt(r[c[0]],c[2])}</td>)}
-                {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
-                  {canApprove && r.estado==="Pendiente" && <>
-                    <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Aprobado");}} onDoubleClick={(e)=>e.stopPropagation()}>Aprobar</button>
-                    <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Rechazado");}} onDoubleClick={(e)=>e.stopPropagation()}>Rechazar</button>
-                  </>}
-                  {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
-                  {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
-                </td>}
-              </tr>
-            ))}
+            {filtered.map(r=>{
+              const rowCanApprove = (mkey==="leaves" && r.estado==="Pendiente" && perm.del) ||
+                                    (mkey==="guards" && r.dia_reposicion && r.estado_reposicion==="Pendiente" && perm.del);
+              return (
+                <tr key={r.id} onDoubleClick={()=>perm.edit&&setModal(r)} style={{cursor:perm.edit?"pointer":"default"}}>
+                  {m.cols.map(c=>{
+                    let val = r[c[0]];
+                    if (mkey === "guards" && c[0] === "estado_reposicion" && r.tipo !== "Guardia fin de semana") {
+                      val = "No aplica";
+                    }
+                    return <td key={c[0]}>{fmt(val,c[2])}</td>;
+                  })}
+                  {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                    {rowCanApprove && <>
+                      <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Aprobado");}} onDoubleClick={(e)=>e.stopPropagation()}>Aprobar</button>
+                      <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Rechazado");}} onDoubleClick={(e)=>e.stopPropagation()}>Rechazar</button>
+                    </>}
+                    {perm.edit && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
+                    {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
+                  </td>}
+                </tr>
+              );
+            })}
           </tbody>
         </table>}
       </div>
-      {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save} data={data} currentUserEmail={currentUserEmail}/>}
+      {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save} data={data} currentUserEmail={currentUserEmail} role={role}/>}
     </div>
   );
 }
 
-/* ---------- modal ---------- */
-function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
+function FormModal({m,record,onClose,onSave,data,currentUserEmail,role}){
   const isMDC = m.table === "mdc_changes";
   
   const mdcFields = [
@@ -848,6 +860,10 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
       }
     } else {
       m.fields.forEach(f=>{ if(o[f[0]]===undefined) o[f[0]]=""; }); 
+      if (!record.id) {
+        if (m.table === "leaves") o.estado = "Pendiente";
+        if (m.table === "guards") o.estado_reposicion = "Pendiente";
+      }
     }
     return o; 
   });
@@ -858,6 +874,14 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
     if (!data || !data.team) return [];
     return data.team.filter(t => t.estado === "Activo").map(t => t.nombre).sort();
   }, [data]);
+
+  const isDisabled = (key) => {
+    const userRole = role;
+    const isStaff = userRole === "Administrador" || userRole === "Líder";
+    if (m.table === "leaves" && key === "estado") return !isStaff;
+    if (m.table === "guards" && key === "estado_reposicion") return !isStaff;
+    return false;
+  };
 
   const handleGuardChange = (val) => {
     set("guardia_siguiente_nombre", val);
@@ -873,11 +897,20 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
     e.preventDefault(); 
     const clean={...form}; 
     if (isMDC) {
+      if (!clean.telefono_contacto || !clean.telefono_contacto.trim()) {
+        alert("El campo 'Teléfono de contacto' es obligatorio.");
+        return;
+      }
       mdcFields.forEach(f=>{ if(clean[f]==="") clean[f]=null; }); 
       clean.sistema = clean.celula_fabrica || "Sistema Desconocido";
       clean.ticket = clean.folio_hydra || clean.folio_simba || clean.ot || clean.req || "";
     } else {
       m.fields.forEach(f=>{ if(clean[f[0]]==="") clean[f[0]]=null; }); 
+      // Limpiar reposición si no es guardia de fin de semana
+      if (m.table === "guards" && clean.tipo !== "Guardia fin de semana") {
+        clean.dia_reposicion = null;
+        clean.estado_reposicion = null;
+      }
     }
     onSave(clean); 
   }
@@ -1064,8 +1097,8 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
                   </select>
                 </div>
                 <div className="field">
-                  <label>Teléfono de contacto</label>
-                  <input type="text" value={form.telefono_contacto} onChange={e=>set("telefono_contacto",e.target.value)}/>
+                  <label>Teléfono de contacto <span style={{color:"var(--red)"}}>*</span></label>
+                  <input type="text" value={form.telefono_contacto} onChange={e=>set("telefono_contacto",e.target.value)} required/>
                 </div>
                 <div className="field">
                   <label>Lugar físico de la guardia</label>
@@ -1089,21 +1122,27 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
     <div className="modal-bg" onClick={onClose}>
       <form className="modal" onClick={e=>e.stopPropagation()} onSubmit={submit}>
         <h3>{record.id?"Editar":"Nuevo"} — {m.label}</h3>
-        {m.fields.map(([key,label,type,req,opts])=>(
-          <div className="field" key={key}>
-            <label>{label}{req?" *":""}</label>
-            {type==="select" ?
-              <select value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req}>
-                <option value="">Selecciona…</option>
-                {opts.map(o=><option key={o} value={o}>{o}</option>)}
-              </select>
-            : type==="textarea" ?
-              <textarea rows="3" value={form[key]||""} onChange={e=>set(key,e.target.value)}/>
-            :
-              <input type={type} value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req}/>
-            }
-          </div>
-        ))}
+        {m.fields.map(([key,label,type,req,opts])=>{
+          // Solo mostrar campos de reposición para guardias de fin de semana
+          if (m.table === "guards" && (key === "dia_reposicion" || key === "estado_reposicion") && form.tipo !== "Guardia fin de semana") {
+            return null;
+          }
+          return (
+            <div className="field" key={key} style={{animation:"fadeIn 0.2s ease"}}>
+              <label>{label}{req?" *":""}</label>
+              {type === "select" || type === "select_team" ?
+                <select value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req} disabled={isDisabled(key)}>
+                  <option value="">Selecciona…</option>
+                  {(type === "select_team" ? teamList : opts).map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              : type === "textarea" ?
+                <textarea rows="3" value={form[key]||""} onChange={e=>set(key,e.target.value)}/>
+              :
+                <input type={type} value={form[key]||""} onChange={e=>set(key,e.target.value)} required={req} disabled={isDisabled(key)}/>
+              }
+            </div>
+          );
+        })}
         <div className="modal-actions">
           <button type="button" className="btn ghost" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn">Guardar</button>
@@ -1114,19 +1153,67 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail}){
 }
 
 /* ---------- Rol de guardias (rotación) ---------- */
-function GuardRoster({perm,onChange}){
+function GuardRoster({perm,onChange,data,currentUserEmail,role}){
   const [rows,setRows] = useState(null);
   const [err,setErr] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [selectedPersona, setSelectedPersona] = useState("");
+  const [teamNames, setTeamNames] = useState([]);
+
   async function load(){
     const {data,error} = await db.from("guard_roster").select("*").order("orden",{ascending:true});
     if(error) setErr(error.message); else { setRows(data||[]); setErr(null); }
   }
-  useEffect(()=>{ load(); },[]);
+
+  useEffect(()=>{
+    load();
+    if (db) {
+      db.from("team")
+        .select("nombre")
+        .eq("estado", "Activo")
+        .order("nombre", { ascending: true })
+        .then(({ data }) => {
+          if (data) setTeamNames(data.map(t => t.nombre));
+        });
+    }
+  },[]);
+
   const turnos = ["Cambios nocturnos","Guardia matutina"];
+  
   function nextId(list){
     if(!list.length) return null;
     return [...list].sort((a,b)=> (a.veces-b.veces) || (a.orden-b.orden))[0].id;
   }
+
+  const canReassign = (rowPersona) => {
+    if (role === "Administrador") return true;
+    if (!data || !data.team || !currentUserEmail) return false;
+    const currentUser = data.team.find(t => t.correo && t.correo.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+    if (!currentUser) return false;
+    const currentUserName = currentUser.nombre;
+
+    // 1. El usuario es el dueño de la guardia
+    if (currentUserName === rowPersona) return true;
+
+    // 2. El usuario es el líder del dueño de la guardia
+    const occupant = data.team.find(t => t.nombre === rowPersona);
+    if (occupant && occupant.lider === currentUserName) return true;
+
+    return false;
+  };
+
+  async function savePersona(id, newPersona) {
+    if (!newPersona) return;
+    const { error } = await db.from("guard_roster").update({ persona: newPersona }).eq("id", id);
+    if (error) {
+      alert("Error al reasignar persona: " + error.message);
+    } else {
+      setEditingId(null);
+      load();
+      onChange && onChange();
+    }
+  }
+
   async function registrar(r){
     const d = new Date();
     if (r.turno === "Cambios nocturnos" || r.turno === "Guardia nocturna") {
@@ -1150,38 +1237,95 @@ function GuardRoster({perm,onChange}){
     }
     load(); onChange&&onChange();
   }
+
   async function reiniciar(turno){
     if(!confirm("¿Reiniciar la rotación de "+turno+"? Pone los contadores en cero.")) return;
     const ids = rows.filter(x=>x.turno===turno).map(x=>x.id);
     if(ids.length) await db.from("guard_roster").update({veces:0,ultima_guardia:null}).in("id",ids);
     load();
   }
+
   if(rows===null) return <div><h1 className="page-title">Rol de guardias</h1><p className="page-sub">Cargando…</p></div>;
+  
   return (
     <div>
       <h1 className="page-title">Rol de guardias</h1>
       <p className="page-sub">Rotación de cambios tomada del Excel. La persona en verde es <b>quién sigue</b>; al registrar un cambio pasa el turno al siguiente.</p>
       {err && <div className="banner">Error: {err}</div>}
-      <div className="grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+      <div className="grid grid-2">
         {turnos.map(t=>{
           const list = rows.filter(r=>r.turno===t).sort((a,b)=>a.orden-b.orden);
           const nid = nextId(list);
           return (
-            <div className="card" key={t} style={{padding:0,overflow:"hidden"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--line)"}}>
+            <div className="card" key={t} style={{padding:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--line)",minWidth:"500px"}}>
                 <h3 style={{margin:0}}>{t}</h3>
                 {perm.del && <button className="btn ghost sm" onClick={()=>reiniciar(t)}>Reiniciar</button>}
               </div>
               {list.length===0 ? <div className="empty">Sin personas.</div> :
-              <table>
+              <table style={{minWidth:"500px"}}>
                 <thead><tr><th>#</th><th>Persona</th><th>Última</th><th>Veces</th><th></th></tr></thead>
                 <tbody>
                   {list.map(r=>(
                     <tr key={r.id} style={r.id===nid?{background:HEX.green+"1f"}:null}>
                       <td>{r.orden}</td>
                       <td>
-                        {r.id===nid && <span className="pill" style={{background:HEX.green+"22",color:HEX.green,marginRight:6}}>sigue</span>}
-                        {r.persona}
+                        {editingId === r.id ? (
+                          <div style={{display:"flex",alignItems:"center",gap:6}} onClick={e=>e.stopPropagation()}>
+                            <select 
+                              value={selectedPersona} 
+                              onChange={e => setSelectedPersona(e.target.value)}
+                              style={{
+                                background:"var(--panel2)",
+                                border:"1px solid var(--line)",
+                                color:"var(--text)",
+                                padding:"4px 8px",
+                                borderRadius:6,
+                                fontSize:13,
+                                width:"160px"
+                              }}
+                            >
+                              <option value="">-- Seleccionar --</option>
+                              {teamNames.map(name => (
+                                <option key={name} value={name}>{name}</option>
+                              ))}
+                            </select>
+                            <button 
+                              className="btn sm" 
+                              style={{background:"var(--green)",padding:"4px 8px"}} 
+                              onClick={() => savePersona(r.id, selectedPersona)}
+                            >
+                              ✓
+                            </button>
+                            <button 
+                              className="btn sm ghost" 
+                              style={{padding:"4px 8px"}} 
+                              onClick={() => setEditingId(null)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                            <div>
+                              {r.id===nid && <span className="pill" style={{background:HEX.green+"22",color:HEX.green,marginRight:6}}>sigue</span>}
+                              {r.persona}
+                            </div>
+                            {perm.edit && canReassign(r.persona) && (
+                              <button 
+                                className="btn ghost sm" 
+                                style={{padding:"2px 6px",fontSize:11,opacity:0.75}} 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingId(r.id);
+                                  setSelectedPersona(r.persona);
+                                }}
+                              >
+                                Reasignar
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td>{r.ultima_guardia ? new Date(r.ultima_guardia).toLocaleDateString("es") : "—"}</td>
                       <td>{r.veces||0}</td>
@@ -1280,6 +1424,81 @@ function NotifBell({data}){
   );
 }
 
+/* ---------- componente de gráfica de línea (SVG nativo responsive) ---------- */
+function DashboardLineChart({ title, chartData, areas, colors }) {
+  const width = 500;
+  const height = 180;
+  const padding = { top: 15, right: 15, bottom: 25, left: 35 };
+
+  let maxY = 4;
+  chartData.forEach(d => {
+    areas.forEach(a => {
+      if (d[a] > maxY) maxY = d[a];
+    });
+  });
+  maxY = Math.ceil(maxY / 4) * 4; // Ajustar a múltiplo de 4 para divisiones estéticas
+
+  const getX = (index) => padding.left + (index * (width - padding.left - padding.right) / 3);
+  const getY = (value) => height - padding.bottom - (value * (height - padding.top - padding.bottom) / maxY);
+
+  return (
+    <div className="card" style={{padding:"16px 20px", display:"flex", flexDirection:"column", gap:10}}>
+      <h3 style={{margin:0, fontSize:13, fontWeight:600, color:"var(--text)"}}>
+        {title}
+      </h3>
+      
+      {/* Leyendas */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:"8px 12px", fontSize:10, color:"var(--muted)", marginBottom:4}}>
+        {areas.map(a => (
+          <div key={a} style={{display:"flex", alignItems:"center", gap:4}}>
+            <span style={{width:8, height:8, borderRadius:"50%", background:colors[a]}}></span>
+            <span>{a}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{position:"relative", width:"100%", height:height}}>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" style={{overflow:"visible"}}>
+          {/* Grilla y líneas horizontales */}
+          {[0, 1, 2, 3, 4].map(i => {
+            const val = Math.round((maxY * i) / 4);
+            const y = getY(val);
+            return (
+              <g key={i}>
+                <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="var(--line)" strokeWidth="1" strokeDasharray="3 3" />
+                <text x={padding.left - 6} y={y + 3} fontSize="9" fill="var(--muted)" textAnchor="end">{val}</text>
+              </g>
+            );
+          })}
+
+          {/* Etiquetas del eje X */}
+          {chartData.map((d, i) => (
+            <text key={i} x={getX(i)} y={height - 5} fontSize="9" fill="var(--muted)" textAnchor="middle">{d.name}</text>
+          ))}
+
+          {/* Líneas de las áreas */}
+          {areas.map(area => {
+            const points = chartData.map((d, i) => `${getX(i)},${getY(d[area])}`).join(" ");
+            const color = colors[area];
+            return (
+              <g key={area}>
+                {/* Sombra de la línea */}
+                <polyline points={points} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity="0.1" />
+                {/* Línea principal */}
+                <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Puntos en cada semana */}
+                {chartData.map((d, i) => (
+                  <circle key={i} cx={getX(i)} cy={getY(d[area])} r="3.5" fill="var(--panel)" stroke={color} strokeWidth="2" />
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- dashboard ---------- */
 function Dashboard({data,go,onRefresh,role}){
   const [importing, setImporting] = useState(false);
@@ -1311,6 +1530,114 @@ function Dashboard({data,go,onRefresh,role}){
   data.windows.filter(w=>w.estado==="En ejecución").forEach(w=>alertas.push(["amber",`Ventana en ejecución: ${w.sistema}`]));
   data.leaves.filter(l=>l.estado==="Pendiente").forEach(l=>alertas.push(["amber",`Permiso pendiente: ${l.persona}`]));
   data.rollbacks.filter(r=>r.estado==="Fallido").forEach(r=>alertas.push(["red",`Reverso fallido: ${r.release}`]));
+
+  // --- Lógica de Gráficas de Línea (Último Mes, por Semana, 4 Áreas Internas) ---
+  const AREAS = ["LAM", "Plataformas y Habilitadores", "Canales Transaccionales", "Core de Pagos y Préstamo"];
+  const chartColors = {
+    "LAM": "var(--accent)",
+    "Plataformas y Habilitadores": "var(--violet)",
+    "Canales Transaccionales": "var(--green)",
+    "Core de Pagos y Préstamo": "var(--amber)"
+  };
+
+  const getWeekIndex = (date, todayVal) => {
+    const diffTime = todayVal - date;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays >= 0 && diffDays < 7) return 3;   // Semana 4 (más reciente)
+    if (diffDays >= 7 && diffDays < 14) return 2;  // Semana 3
+    if (diffDays >= 14 && diffDays < 21) return 1; // Semana 2
+    if (diffDays >= 21 && diffDays < 28) return 0; // Semana 1 (más antigua)
+    return -1;
+  };
+
+  const getChangeArea = (c) => {
+    // 1. Buscar por responsable_cambio en el equipo
+    if (c.responsable_cambio) {
+      const member = data.team?.find(t => t.nombre === c.responsable_cambio);
+      if (member && member.area) return member.area;
+    }
+    // 2. Buscar por responsable_libera (líder) en el equipo
+    if (c.responsable_libera) {
+      const member = data.team?.find(t => t.nombre === c.responsable_libera);
+      if (member && member.area) return member.area;
+    }
+    // 3. Fallback basado en celula_fabrica o texto
+    const celulaLower = String(c.celula_fabrica || "").toLowerCase();
+    if (celulaLower.includes("lam")) return "LAM";
+    if (celulaLower.includes("plataforma") || celulaLower.includes("habilitador")) return "Plataformas y Habilitadores";
+    if (celulaLower.includes("canal") || celulaLower.includes("transaccional")) return "Canales Transaccionales";
+    if (celulaLower.includes("core") || celulaLower.includes("pago") || celulaLower.includes("prestamo")) return "Core de Pagos y Préstamo";
+    
+    return null;
+  };
+
+  const getRollbackArea = (r) => {
+    // 1. Intentar encontrar el cambio MDC asociado en el release
+    const change = mdcChanges.find(c => 
+      (c.folio_hydra && r.release && r.release.includes(c.folio_hydra)) ||
+      (c.ticket && r.release && r.release.includes(c.ticket)) ||
+      (c.req && r.release && r.release.includes(c.req)) ||
+      (c.ot && r.release && r.release.includes(c.ot))
+    );
+    if (change) {
+      const area = getChangeArea(change);
+      if (area) return area;
+    }
+    // 2. Buscar por responsable del reverso en la tabla team
+    if (r.responsable) {
+      const member = data.team?.find(t => t.nombre === r.responsable);
+      if (member && member.area) return member.area;
+    }
+    // 3. Heurística basada en el texto del release
+    const relLower = String(r.release || "").toLowerCase();
+    if (relLower.includes("lam")) return "LAM";
+    if (relLower.includes("plataforma") || relLower.includes("habilitador")) return "Plataformas y Habilitadores";
+    if (relLower.includes("canal") || relLower.includes("transaccional")) return "Canales Transaccionales";
+    if (relLower.includes("core") || relLower.includes("pago") || relLower.includes("prestamo")) return "Core de Pagos y Préstamo";
+    
+    return null;
+  };
+
+  const changesData = [
+    { name: "Semana 1", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 2", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 3", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 4", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 }
+  ];
+
+  mdcChanges.forEach(c => {
+    if (!c.fecha) return;
+    const date = pd(c.fecha);
+    if (!date) return;
+    const weekIdx = getWeekIndex(date, today);
+    if (weekIdx !== -1) {
+      const area = getChangeArea(c);
+      if (area && AREAS.includes(area)) {
+        changesData[weekIdx][area] += 1;
+      }
+    }
+  });
+
+  const rollbacksList = data.rollbacks || [];
+  const rollbacksData = [
+    { name: "Semana 1", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 2", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 3", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 },
+    { name: "Semana 4", "LAM": 0, "Plataformas y Habilitadores": 0, "Canales Transaccionales": 0, "Core de Pagos y Préstamo": 0 }
+  ];
+
+  rollbacksList.forEach(r => {
+    if (!r.fecha) return;
+    const date = pd(r.fecha);
+    if (!date) return;
+    const weekIdx = getWeekIndex(date, today);
+    if (weekIdx !== -1) {
+      const area = getRollbackArea(r);
+      if (area && AREAS.includes(area)) {
+        rollbacksData[weekIdx][area] += 1;
+      }
+    }
+  });
 
   const kpis=[
     ["Personal activo",activos,I.team,"team"],
@@ -1475,6 +1802,13 @@ function Dashboard({data,go,onRefresh,role}){
           </div>
         ))}
       </div>
+      
+      {/* Gráficas de Línea de Cambios y Reverso por Área */}
+      <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(400px, 1fr))", marginBottom:18}}>
+        <DashboardLineChart title="Cambios por Área (Último Mes)" chartData={changesData} areas={AREAS} colors={chartColors} />
+        <DashboardLineChart title="Reversos por Área (Último Mes)" chartData={rollbacksData} areas={AREAS} colors={chartColors} />
+      </div>
+
       <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))"}}>
         <div className="card">
           <h3 style={{marginTop:0}}>Próximos eventos</h3>
@@ -1525,14 +1859,19 @@ function Dashboard({data,go,onRefresh,role}){
 
 /* ---------- calendario ---------- */
 function Calendar({data}){
-  const [cursor,setCursor]=useState(()=>{ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),1); });
+  const [cursor,setCursor]=useState(()=>{ const t=new Date(); return new Date(t.getFullYear(),t.getMonth(),1,12,0,0); });
   const byDay=useMemo(()=>{
     const map={};
     const push=(d,ev)=>{ const k=dkey(d); (map[k]=map[k]||[]).push(ev); };
     if(data){
       data.leaves.forEach(l=>{ if(l.estado==="Rechazado")return; const a=pd(l.fecha_inicio),b=pd(l.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"amber",label:`${l.persona} · ${l.tipo||"Permiso"}`,persona:l.persona,kind:"leave"}); d.setDate(d.getDate()+1);i++; } });
       data.guards.forEach(g=>{ const a=pd(g.fecha_inicio),b=pd(g.fecha_fin)||a; if(!a)return; let d=new Date(a),i=0; while(d<=b&&i<400){ push(new Date(d),{color:"violet",label:`${g.persona} · ${g.tipo||"Guardia"}${g.hora_inicio ? ' ('+g.hora_inicio+')' : ''}`,persona:g.persona,kind:"guard"}); d.setDate(d.getDate()+1);i++; } });
-      data.windows.forEach(w=>{ if(!w.fecha_hora||w.estado==="Cancelada")return; push(new Date(w.fecha_hora),{color:"accent",label:`${w.sistema}`,kind:"window"}); });
+      data.windows.forEach(w=>{ 
+        if(!w.fecha_hora||w.estado==="Cancelada")return; 
+        const datePart=String(w.fecha_hora).slice(0,10);
+        const parsed=pd(datePart);
+        if(parsed) push(parsed,{color:"accent",label:`${w.sistema}`,kind:"window"}); 
+      });
     }
     // marcar choques
     Object.values(map).forEach(evs=>{
@@ -1544,13 +1883,13 @@ function Calendar({data}){
   },[data]);
 
   const y=cursor.getFullYear(), mo=cursor.getMonth();
-  const first=new Date(y,mo,1);
+  const first=new Date(y,mo,1,12,0,0);
   const startDow=(first.getDay()+6)%7; // lunes=0
   const daysInMonth=new Date(y,mo+1,0).getDate();
   const todayK=dkey(startToday());
   const cells=[];
   for(let i=0;i<startDow;i++) cells.push(null);
-  for(let d=1;d<=daysInMonth;d++) cells.push(new Date(y,mo,d));
+  for(let d=1;d<=daysInMonth;d++) cells.push(new Date(y,mo,d,12,0,0));
   while(cells.length%7!==0) cells.push(null);
 
   const dows=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
