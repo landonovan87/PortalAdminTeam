@@ -339,15 +339,15 @@ function Shell({role,email,onLogout}){
         {view==="dashboard" ? <Dashboard data={data} go={setView} onRefresh={bump} role={role}/> :
          view==="calendar"  ? <Calendar data={data}/> :
          view==="roster"    ? <GuardRoster perm={perm} onChange={bump} data={data} currentUserEmail={email} role={role}/> :
-         view==="users"     ? <UsersPage/> :
-         <ModulePage key={view} mkey={view} perm={perm} onChange={bump} data={data} currentUserEmail={email} role={role}/>}
+         view==="users"     ? <UsersPage team={data?.team || []}/> :
+          <ModulePage key={view} mkey={view} perm={perm} onChange={bump} data={data} currentUserEmail={email} role={role}/>}
       </main>
     </div>
   );
 }
 
 /* ---------- administración de usuarios (solo Administrador) ---------- */
-function UsersPage(){
+function UsersPage({team}){
   const [rows,setRows] = useState(null);
   const [err,setErr] = useState(null);
   async function load(){
@@ -369,20 +369,24 @@ function UsersPage(){
         {rows===null ? <div className="empty">Cargando…</div> :
          rows.length===0 ? <div className="empty">Aún no hay usuarios registrados.</div> :
         <table style={{minWidth:"450px"}}>
-          <thead><tr><th>Correo</th><th>Rol</th><th>Alta</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Alta</th></tr></thead>
           <tbody>
-            {rows.map(u=>(
-              <tr key={u.id}>
-                <td>{u.email||"—"}</td>
-                <td>
-                  <select value={u.role} onChange={e=>changeRole(u.id,e.target.value)}
-                    style={{background:"var(--panel2)",border:"1px solid var(--line)",color:"var(--text)",padding:"6px 10px",borderRadius:8}}>
-                    {Object.keys(PERMS).map(r=><option key={r} value={r}>{r}</option>)}
-                  </select>
-                </td>
-                <td>{u.created_at ? new Date(u.created_at).toLocaleDateString("es") : "—"}</td>
-              </tr>
-            ))}
+            {rows.map(u=>{
+              const person = team.find(t => t.correo && t.correo.toLowerCase().trim() === u.email?.toLowerCase().trim());
+              return (
+                <tr key={u.id}>
+                  <td><b>{person ? person.nombre : "—"}</b></td>
+                  <td>{u.email||"—"}</td>
+                  <td>
+                    <select value={u.role} onChange={e=>changeRole(u.id,e.target.value)}
+                      style={{background:"var(--panel2)",border:"1px solid var(--line)",color:"var(--text)",padding:"6px 10px",borderRadius:8}}>
+                      {Object.keys(PERMS).map(r=><option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </td>
+                  <td>{u.created_at ? new Date(u.created_at).toLocaleDateString("es") : "—"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>}
       </div>
@@ -803,6 +807,42 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
     return list.filter(r => m.search.some(f => String(r[f] || "").toLowerCase().includes(s)));
   }, [rows, q, selectedDate, mkey, m.search]);
 
+  async function testTelegramBot() {
+    if (!confirm("¿Enviar un mensaje de prueba al Bot de Telegram?")) return;
+    try {
+      const sessionRes = await db.auth.getSession();
+      const token = sessionRes.data?.session?.access_token;
+      if (!token) throw new Error("No hay sesión activa.");
+
+      const response = await fetch(`${cfg.SUPABASE_URL}/functions/v1/telegram-handler`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          type: "INSERT",
+          table: "mdc_changes",
+          record: {
+            sistema: "Sistema de Prueba (Test Bot)",
+            ticket: "RFC-TEST-123",
+            responsable_cambio: "Administrador",
+            fecha: new Date().toISOString().split("T")[0]
+          }
+        })
+      });
+
+      if (response.ok) {
+        alert("¡Mensaje de prueba enviado con éxito! Revisa tu grupo de Telegram.");
+      } else {
+        const errTxt = await response.text();
+        alert(`Error al enviar: ${response.status} - ${errTxt}`);
+      }
+    } catch (err) {
+      alert(`Error de conexión: ${err.message}`);
+    }
+  }
+
   async function save(obj){
     const payload={...obj}; delete payload.id; delete payload.created_at;
     const { error } = obj.id
@@ -868,6 +908,11 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
           )}
         </div>
         <div style={{display:"flex",gap:8}}>
+          {mkey === "team" && role === "Administrador" && (
+            <button className="btn ghost sm" style={{borderColor:"var(--violet)",color:"var(--violet)"}} onClick={testTelegramBot}>
+              Probar Bot Telegram
+            </button>
+          )}
           <button className="btn ghost sm" onClick={()=>mkey==="mdc"?setDateFilter("open"):exportExcel(m,filtered)}>Excel</button>
           <button className="btn ghost sm" onClick={()=>exportPDF(m,filtered)}>PDF</button>
           {perm.create && <button className="btn" onClick={()=>setModal({})}><Icon d={I.plus} size={16}/> Agregar</button>}
@@ -2170,9 +2215,15 @@ function Dashboard({data,go,onRefresh,role}){
       
       {/* Gráficas de Línea de Cambios y Reverso por Área */}
       <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))", marginBottom:18}}>
-        <DashboardLineChart title="Cambios por Área (Último Mes)" chartData={changesData} areas={AREAS} colors={chartColors} />
-        <DashboardLineChart title="Reversos por Área (Último Mes)" chartData={rollbacksData} areas={AREAS} colors={chartColors} />
-        <DashboardSuccessRanking data={areasSuccess} />
+        <div style={{cursor:"pointer"}} onClick={()=>go("mdc")} title="Ver listado de cambios">
+          <DashboardLineChart title="Cambios por Área (Último Mes)" chartData={changesData} areas={AREAS} colors={chartColors} />
+        </div>
+        <div style={{cursor:"pointer"}} onClick={()=>go("rollbacks")} title="Ver listado de reversos">
+          <DashboardLineChart title="Reversos por Área (Último Mes)" chartData={rollbacksData} areas={AREAS} colors={chartColors} />
+        </div>
+        <div style={{cursor:"pointer"}} onClick={()=>go("mdc")} title="Ver listado de cambios">
+          <DashboardSuccessRanking data={areasSuccess} />
+        </div>
       </div>
 
       <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))"}}>
@@ -2180,7 +2231,7 @@ function Dashboard({data,go,onRefresh,role}){
           <h3 style={{marginTop:0}}>Próximos eventos</h3>
           {proximos.length===0 ? <p className="page-sub">No hay eventos próximos.</p> :
             proximos.map((e,i)=>(
-              <div className="alert-row" key={i}>
+              <div className="alert-row" key={i} style={{cursor:"pointer"}} onClick={()=>go(e.tipo==="Ventana"?"windows":"guards")} title={`Ir a ${e.tipo === "Ventana" ? "Ventanas" : "Guardias"}`}>
                 <span className="dot" style={{background:e.tipo==="Ventana"?C.accent:C.violet}}></span>
                 <div>
                   <div>{e.tipo}: <b>{e.txt}</b> {e.estado&&<Pill v={e.estado}/>}</div>
@@ -2189,13 +2240,13 @@ function Dashboard({data,go,onRefresh,role}){
               </div>
             ))}
         </div>
-        <div className="card">
+        <div className="card" style={{cursor:"pointer"}} onClick={()=>go("mdc")} title="Ir a Mapeo de Cambios (MDC)">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:0,marginBottom:14}}>
             <h3 style={{margin:0}}><Icon d={I.wind} size={16}/> Cambios de Hoy (MDC)</h3>
           </div>
           {mdcHoy.length===0 ? <p className="page-sub">No hay cambios programados para hoy en MDC.</p> :
             mdcHoy.map((e,i)=>(
-              <div className="alert-row" key={i}>
+              <div className="alert-row" key={i} onClick={(evt)=>evt.stopPropagation()}>
                 <span className="dot" style={{background:C.green}}></span>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -2214,9 +2265,19 @@ function Dashboard({data,go,onRefresh,role}){
         <div className="card">
           <h3 style={{marginTop:0}}><Icon d={I.bell} size={16}/> Alertas</h3>
           {alertas.length===0 ? <p className="page-sub">Todo en orden, sin alertas.</p> :
-            alertas.slice(0,8).map(([c,t],i)=>(
-              <div className="alert-row" key={i}><span className="dot" style={{background:C[c]}}></span><div>{t}</div></div>
-            ))}
+            alertas.slice(0,8).map(([c,t],i)=>{
+              let dest = "";
+              if (t.includes("agenda")) dest = "calendar";
+              else if (t.includes("Ventana")) dest = "windows";
+              else if (t.includes("Permiso")) dest = "leaves";
+              else if (t.includes("Reverso")) dest = "rollbacks";
+              return (
+                <div className="alert-row" key={i} style={{cursor:dest?"pointer":"default"}} onClick={()=>dest && go(dest)} title={dest ? `Ir a la sección correspondiente` : ""}>
+                  <span className="dot" style={{background:C[c]}}></span>
+                  <div>{t}</div>
+                </div>
+              );
+            })}
         </div>
       </div>
     </div>
