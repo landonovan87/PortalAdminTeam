@@ -1304,6 +1304,11 @@ function GuardRoster({perm,onChange,data,currentUserEmail,role}){
     return active.map(t => t.nombre).sort();
   }, [data, currentUserEmail, role]);
 
+  async function load(){
+    const {data:d,error} = await db.from("guard_roster").select("*");
+    if(error) setErr(error.message); else { setRows(d||[]); setErr(null); }
+  }
+
   useEffect(()=>{
     load();
   },[]);
@@ -1350,6 +1355,7 @@ function GuardRoster({perm,onChange,data,currentUserEmail,role}){
       d.setDate(d.getDate() - 1);
     }
     const today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const defaultHora = r.turno === "Cambios nocturnos" ? "22:00" : "09:00";
     const { error: err1 } = await db.from("guard_roster").update({veces:(r.veces||0)+1, ultima_guardia:today}).eq("id",r.id);
     if(err1) {
       alert("Error al actualizar la rotación: " + err1.message);
@@ -1359,6 +1365,7 @@ function GuardRoster({perm,onChange,data,currentUserEmail,role}){
       persona: r.persona,
       tipo: r.turno,
       fecha_inicio: today,
+      hora_inicio: defaultHora,
       fecha_fin: today,
       notas: "Registro automático desde rol de guardias"
     });
