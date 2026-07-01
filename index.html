@@ -140,6 +140,9 @@ const PERMS = {
 
 /* ---------- catálogos ---------- */
 const CAT = {
+  areas: ["LAM", "Plataformas y Habilitadores", "Canales Transaccionales", "Core de Pagos y Préstamo"],
+  gerentes: ["David Dominguez Chavez", "Cesar Cornejo Gonzalez", "Ivan Navarrete Garcia", "Jovany Marcos Ramirez", "Jesus Orlando Munguia Garcia"],
+  puestos: ["Director", "Gerente", "Líder de Proyecto", "Líder Técnico", "Desarrollador", "DevSecOps", "Soporte", "QA"],
   estadoPersona: ["Activo","Inactivo"],
   tipoPermiso: ["Vacaciones","Permiso personal","Permiso médico","Home office","Otro"],
   estadoPermiso: ["Pendiente","Aprobado","Rechazado"],
@@ -166,6 +169,7 @@ function Pill({v}){
 /* ---------- iconos ---------- */
 const I = {
   dash:"M3 13h8V3H3zM13 21h8V3h-8zM3 21h8v-6H3z",
+  req:"M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2 M9 2h6v4H9z",
   team:"M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21a8 8 0 0116 0",
   leave:"M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z",
   guard:"M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z",
@@ -186,7 +190,7 @@ function Icon({d,size=18}){return <svg width={size} height={size} viewBox="0 0 2
 const MODULES = {
   team:{ table:"team", label:"Equipo", icon:I.team, title:"Equipo", sub:"Registro del personal del equipo de TI",
     cols:[["numero_empleado","N° empleado"],["nombre","Nombre"],["rol","Rol"],["area","Área"],["correo","Correo"],["telefono","Teléfono"],["lider","Líder de Equipo"],["estado","Estado","pill"]],
-    fields:[["numero_empleado","N° empleado","text",true],["nombre","Nombre","text",true],["rol","Rol / puesto","text"],["area","Área","text"],["correo","Correo","email"],["telefono","Teléfono","text",true],["lider","Líder de Equipo","select_team"],["estado","Estado","select",false,CAT.estadoPersona]],
+    fields:[["numero_empleado","N° empleado","text",true],["nombre","Nombre","text",true],["rol","Rol / puesto","select",false,CAT.puestos],["area","Área","select",false,CAT.areas],["correo","Correo","email"],["telefono","Teléfono","text",true],["lider","Líder de Equipo","select",false,CAT.gerentes],["estado","Estado","select",false,CAT.estadoPersona]],
     search:["numero_empleado","nombre","rol","area","correo","lider"] },
   leaves:{ table:"leaves", label:"Permisos", icon:I.leave, title:"Permisos y vacaciones", sub:"Control de ausencias del personal",
     cols:[["persona","Persona"],["tipo","Tipo"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["backup","Backup"],["estado","Estado","pill"],["notas","Notas"]],
@@ -212,6 +216,10 @@ const MODULES = {
     cols:[["fecha","Día de Cambio"],["sistema","Sistema"],["ticket","Ticket / RFC"],["responsable_cambio","Responsable"],["estado","Resultado","pill"]],
     fields:[], 
     search:["sistema","responsable_cambio","ticket","folio_hydra","folio_simba"] },
+  requirements:{ table:"requirements", label:"Requerimientos", icon:I.req, title:"Requerimientos", sub:"Control y seguimiento de requerimientos por equipo, gerente y desarrollador",
+    cols:[["num_req","N° REQ"],["nombre","Nombre REQ"],["area","Área"],["gerente","Responsable"],["desarrolladores","Desarrolladores"],["fecha_inicio","Inicio"],["fecha_fin","Fin"],["descripcion","Descripción"]],
+    fields:[["num_req","N° REQ","text",true],["nombre","Nombre del REQ","text",true],["area","Área","select",false,CAT.areas],["gerente","Responsable","datalist",false,CAT.gerentes],["desarrolladores","Participantes desarrolladores","select_team_multi"],["fecha_inicio","Inicio Desarrollo","date"],["fecha_fin","Fin Desarrollo","date"],["descripcion","Descripción general","textarea"]],
+    search:["num_req","nombre","area","gerente","desarrolladores"] },
 };
 
 /* ---------- utilidades de fecha ---------- */
@@ -696,7 +704,7 @@ function useAllData(key){
   const [err,setErr] = useState(null);
   useEffect(()=>{ let alive=true; (async()=>{
     try{
-      const tables=["team","leaves","guards","windows","courses","rollbacks","mdc_changes","notifications"];
+      const tables=["team","leaves","guards","windows","courses","rollbacks","mdc_changes","notifications","requirements"];
       const res=await Promise.all(tables.map(t=>db.from(t).select("*")));
       if(!alive) return;
       const obj={}; tables.forEach((t,i)=> obj[t]=res[i].data||[]);
@@ -794,8 +802,34 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
 
   const [selectedDate, setSelectedDate] = useState(() => mkey === "mdc" ? localToday : "");
 
+  const currentUser = useMemo(() => {
+    if (!data || !data.team || !currentUserEmail) return null;
+    return data.team.find(t => t.correo && t.correo.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+  }, [data, currentUserEmail]);
+
+  const currentUserName = currentUser ? currentUser.nombre : "";
+
   const filtered = useMemo(() => {
     let list = rows;
+
+    // Jerarquía de visualización para permisos y vacaciones (leaves)
+    if (mkey === "leaves") {
+      if (role !== "Administrador") {
+        if (role === "Líder" && currentUserName) {
+          // El líder ve lo de sus miembros de equipo y lo suyo
+          const teamMembers = data?.team
+            ? data.team.filter(t => t.lider === currentUserName).map(t => t.nombre)
+            : [];
+          list = list.filter(r => r.persona === currentUserName || teamMembers.includes(r.persona));
+        } else if (currentUserName) {
+          // El desarrollador (Miembro) ve solo lo suyo
+          list = list.filter(r => r.persona === currentUserName);
+        } else {
+          list = [];
+        }
+      }
+    }
+
     if (mkey === "mdc" && selectedDate) {
       list = list.filter(r => {
         const rDate = r.fecha ? r.fecha.slice(0, 10) : "";
@@ -805,7 +839,7 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
     if (!q.trim()) return list;
     const s = q.toLowerCase();
     return list.filter(r => m.search.some(f => String(r[f] || "").toLowerCase().includes(s)));
-  }, [rows, q, selectedDate, mkey, m.search]);
+  }, [rows, q, selectedDate, mkey, m.search, role, currentUserName, data]);
 
   async function testTelegramBot() {
     if (!confirm("¿Enviar un mensaje de prueba al Bot de Telegram?")) return;
@@ -1031,6 +1065,16 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail,role}){
   });
 
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+
+  const resolvedGerentes = useMemo(() => {
+    if (!data || !data.team) return ["David", "Cesar", "Ivan", "Jovany", "Orlando"];
+    const active = data.team.filter(t => t.estado === "Activo");
+    const keywords = ["david", "cesar", "ivan", "jovany", "orlando"];
+    const matches = active
+      .filter(t => keywords.some(k => t.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(k)))
+      .map(t => t.nombre);
+    return matches.length > 0 ? matches.sort() : ["David", "Cesar", "Ivan", "Jovany", "Orlando"];
+  }, [data]);
 
   const teamList = useMemo(() => {
     if (!data || !data.team) return [];
@@ -1297,7 +1341,7 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail,role}){
     <div className="modal-bg" onClick={onClose}>
       <form className="modal" onClick={e=>e.stopPropagation()} onSubmit={submit}>
         <h3>{record.id?"Editar":"Nuevo"} — {m.label}</h3>
-        {m.fields.map(([key,label,type,req,opts])=>{
+        {m.fields.map(([key,label,type,req,opts]) => {
           // Solo mostrar campos de reposición para guardias de fin de semana
           if (m.table === "guards" && (key === "dia_reposicion" || key === "estado_reposicion") && form.tipo !== "Guardia fin de semana") {
             return null;
@@ -1310,6 +1354,71 @@ function FormModal({m,record,onClose,onSave,data,currentUserEmail,role}){
                   <option value="">Selecciona…</option>
                   {(type === "select_team" ? teamList : opts).map(o=><option key={o} value={o}>{o}</option>)}
                 </select>
+              : type === "select_team_multi" ?
+                (() => {
+                  const currentVals = (form[key] || "").split(", ").filter(Boolean);
+                  return (
+                    <div>
+                      <div style={{display:"flex", gap:8, marginBottom:8}}>
+                        <select id={`${key}-multi-select`} style={{flex:1, background:"var(--panel2)", border:"1px solid var(--line)", color:"var(--text)", padding:"6px 10px", borderRadius:8}}>
+                          <option value="">-- Seleccionar desarrollador --</option>
+                          {teamList.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <button 
+                          type="button" 
+                          className="btn" 
+                          onClick={() => {
+                            const el = document.getElementById(`${key}-multi-select`);
+                            const val = el ? el.value : "";
+                            if (val && !currentVals.includes(val)) {
+                              const nextVals = [...currentVals, val];
+                              set(key, nextVals.join(", "));
+                            }
+                            if (el) el.value = "";
+                          }}
+                        >
+                          Agregar
+                        </button>
+                      </div>
+                      {currentVals.length > 0 && (
+                        <div style={{display:"flex", flexWrap:"wrap", gap:6, padding:"8px 12px", border:"1px solid var(--line)", borderRadius:8, background:"var(--panel2)"}}>
+                          {currentVals.map(name => (
+                            <span key={name} className="pill" style={{display:"inline-flex", alignItems:"center", gap:6, background:"var(--accent)22", color:"var(--accent)", padding:"4px 8px", fontSize:12, borderRadius:16}}>
+                              {name}
+                              <button 
+                                type="button" 
+                                style={{background:"none", border:"none", color:"var(--accent)", cursor:"pointer", padding:0, fontSize:12, fontWeight:"bold", display:"inline-flex", alignItems:"center", justifyContent:"center"}}
+                                onClick={() => {
+                                  const nextVals = currentVals.filter(v => v !== name);
+                                  set(key, nextVals.join(", "));
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              : type === "datalist" ?
+                <div>
+                  <input 
+                    type="text" 
+                    value={form[key]||""} 
+                    onChange={e=>set(key,e.target.value)} 
+                    list={`${key}-datalist`} 
+                    required={req} 
+                    disabled={isDisabled(key)}
+                    style={{width:"100%"}}
+                  />
+                  <datalist id={`${key}-datalist`}>
+                    {opts.map(o=><option key={o} value={o}/>)}
+                  </datalist>
+                </div>
               : type === "textarea" ?
                 <textarea rows="3" value={form[key]||""} onChange={e=>set(key,e.target.value)}/>
               :
