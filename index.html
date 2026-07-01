@@ -140,7 +140,7 @@ const PERMS = {
 
 /* ---------- catálogos ---------- */
 const CAT = {
-  areas: ["LAM", "Plataformas y Habilitadores", "Canales Transaccionales", "Core de Pagos y Préstamo"],
+  areas: ["Medios de Disposición de Préstamo", "LAM", "Plataformas y Habilitadores", "Canales Transaccionales", "Core de Pagos y Préstamo"],
   gerentes: ["David Dominguez Chavez", "Cesar Cornejo Gonzalez", "Ivan Navarrete Garcia", "Jovany Marcos Ramirez", "Jesus Orlando Munguia Garcia"],
   puestos: ["Director", "Gerente", "Líder de Proyecto", "Líder Técnico", "Desarrollador", "DevSecOps", "Soporte", "QA"],
   estadoPersona: ["Activo","Inactivo"],
@@ -801,6 +801,7 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
   }, []);
 
   const [selectedDate, setSelectedDate] = useState(() => mkey === "mdc" ? localToday : "");
+  const [selectedAreaFilter, setSelectedAreaFilter] = useState("");
 
   const currentUser = useMemo(() => {
     if (!data || !data.team || !currentUserEmail) return null;
@@ -840,6 +841,26 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
     const s = q.toLowerCase();
     return list.filter(r => m.search.some(f => String(r[f] || "").toLowerCase().includes(s)));
   }, [rows, q, selectedDate, mkey, m.search, role, currentUserName, data]);
+
+  const groupedByArea = useMemo(() => {
+    if (mkey !== "team") return null;
+    const groups = {};
+    if (selectedAreaFilter) {
+      groups[selectedAreaFilter] = [];
+    } else {
+      CAT.areas.forEach(a => groups[a] = []);
+      groups["Sin Área"] = [];
+    }
+    
+    filtered.forEach(r => {
+      const a = r.area && CAT.areas.includes(r.area) ? r.area : "Sin Área";
+      if (groups[a] !== undefined) {
+        groups[a].push(r);
+      }
+    });
+    
+    return groups;
+  }, [filtered, mkey, selectedAreaFilter]);
 
   async function testTelegramBot() {
     if (!confirm("¿Enviar un mensaje de prueba al Bot de Telegram?")) return;
@@ -940,6 +961,20 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
               )}
             </div>
           )}
+          {mkey === "team" && (
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontSize:13,color:"var(--muted)",whiteSpace:"nowrap"}}>Filtrar Área:</span>
+              <select 
+                className="search"
+                style={{padding:"0 10px",height:"34px",background:"var(--panel)",border:"1px solid var(--line)",color:"var(--text)",borderRadius:8,fontSize:13}}
+                value={selectedAreaFilter}
+                onChange={e=>setSelectedAreaFilter(e.target.value)}
+              >
+                <option value="">-- Todas las áreas --</option>
+                {CAT.areas.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div style={{display:"flex",gap:8}}>
           {mkey === "team" && role === "Administrador" && (
@@ -952,38 +987,86 @@ function ModulePage({mkey,perm,onChange,data,currentUserEmail,role}){
           {perm.create && <button className="btn" onClick={()=>setModal({})}><Icon d={I.plus} size={16}/> Agregar</button>}
         </div>
       </div>
-      <div className="card" style={{padding:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div className="card" style={{padding:mkey==="team"?0:0,background:mkey==="team"?"transparent":"var(--panel)",boxShadow:mkey==="team"?"none":"var(--shadow)",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading ? <div className="empty">Cargando…</div> :
          filtered.length===0 ? <div className="empty">Sin registros.</div> :
-        <table style={{minWidth: `${m.cols.length * 115 + (showActions ? 130 : 0)}px`}}>
-          <thead><tr>{m.cols.map(c=><th key={c[0]}>{c[1]}</th>)}{showActions&&<th></th>}</tr></thead>
-          <tbody>
-            {filtered.map(r=>{
-              const rowCanApprove = (mkey==="leaves" && r.estado==="Pendiente" && perm.del) ||
-                                    (mkey==="guards" && r.dia_reposicion && r.estado_reposicion==="Pendiente" && perm.del);
-              const rowEditable = perm.edit && !(mkey === "leaves" && r.estado !== "Pendiente" && role === "Miembro");
-              return (
-                <tr key={r.id} onDoubleClick={()=>rowEditable&&setModal(r)} style={{cursor:rowEditable?"pointer":"default"}}>
-                  {m.cols.map(c=>{
-                    let val = r[c[0]];
-                    if (mkey === "guards" && c[0] === "estado_reposicion" && r.tipo !== "Guardia fin de semana") {
-                      val = "No aplica";
-                    }
-                    return <td key={c[0]}>{fmt(val,c[2])}</td>;
-                  })}
-                  {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
-                    {rowCanApprove && <>
-                      <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Aprobado");}} onDoubleClick={(e)=>e.stopPropagation()}>Aprobar</button>
-                      <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Rechazado");}} onDoubleClick={(e)=>e.stopPropagation()}>Rechazar</button>
-                    </>}
-                    {rowEditable && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
-                    {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
-                  </td>}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>}
+         mkey === "team" && groupedByArea ? (
+           <div style={{display:"flex", flexDirection:"column", gap:24, width:"100%"}}>
+             {Object.entries(groupedByArea).map(([areaName, members]) => {
+               if (members.length === 0) return null;
+               return (
+                 <div key={areaName} className="card" style={{padding:0, overflow:"hidden"}}>
+                   <div style={{
+                     background: "var(--panel2)",
+                     padding: "10px 16px",
+                     borderLeft: "4px solid var(--accent)",
+                     fontWeight: "600",
+                     fontSize: "13px",
+                     color: "var(--text)",
+                     display: "flex",
+                     justifyContent: "space-between",
+                     alignItems: "center",
+                     borderBottom: "1px solid var(--line)"
+                   }}>
+                     <span>{areaName}</span>
+                     <span className="pill" style={{fontSize:11, padding:"2px 8px", background:"var(--accent)22", color:"var(--accent)"}}>{members.length} integrantes</span>
+                   </div>
+                   <div style={{overflowX:"auto"}}>
+                     <table style={{minWidth: `${m.cols.length * 115 + (showActions ? 130 : 0)}px`, width:"100%"}}>
+                       <thead><tr>{m.cols.map(c=><th key={c[0]}>{c[1]}</th>)}{showActions&&<th></th>}</tr></thead>
+                       <tbody>
+                         {members.map(r=>{
+                           const rowEditable = perm.edit;
+                           return (
+                             <tr key={r.id} onDoubleClick={()=>rowEditable&&setModal(r)} style={{cursor:rowEditable?"pointer":"default"}}>
+                               {m.cols.map(c=>{
+                                 return <td key={c[0]}>{fmt(r[c[0]],c[2])}</td>;
+                               })}
+                               {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                                 {rowEditable && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
+                                 {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
+                               </td>}
+                             </tr>
+                           );
+                         })}
+                       </tbody>
+                     </table>
+                   </div>
+                 </div>
+               );
+             })}
+           </div>
+         ) : (
+          <table style={{minWidth: `${m.cols.length * 115 + (showActions ? 130 : 0)}px`}}>
+            <thead><tr>{m.cols.map(c=><th key={c[0]}>{c[1]}</th>)}{showActions&&<th></th>}</tr></thead>
+            <tbody>
+              {filtered.map(r=>{
+                const rowCanApprove = (mkey==="leaves" && r.estado==="Pendiente" && perm.del) ||
+                                      (mkey==="guards" && r.dia_reposicion && r.estado_reposicion==="Pendiente" && perm.del);
+                const rowEditable = perm.edit && !(mkey === "leaves" && r.estado !== "Pendiente" && role === "Miembro");
+                return (
+                  <tr key={r.id} onDoubleClick={()=>rowEditable&&setModal(r)} style={{cursor:rowEditable?"pointer":"default"}}>
+                    {m.cols.map(c=>{
+                      let val = r[c[0]];
+                      if (mkey === "guards" && c[0] === "estado_reposicion" && r.tipo !== "Guardia fin de semana") {
+                        val = "No aplica";
+                      }
+                      return <td key={c[0]}>{fmt(val,c[2])}</td>;
+                    })}
+                    {showActions && <td style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                      {rowCanApprove && <>
+                        <button className="btn sm" style={{background:"var(--green)",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Aprobado");}} onDoubleClick={(e)=>e.stopPropagation()}>Aprobar</button>
+                        <button className="btn sm" style={{background:"var(--red)",color:"#fff",marginRight:6}} onClick={(e)=>{e.stopPropagation();aprobar(r,"Rechazado");}} onDoubleClick={(e)=>e.stopPropagation()}>Rechazar</button>
+                      </>}
+                      {rowEditable && <button className="btn ghost" style={{padding:"5px 9px",marginRight:6}} onClick={(e)=>{e.stopPropagation();setModal(r);}} onDoubleClick={(e)=>e.stopPropagation()}>Editar</button>}
+                      {perm.del && <button className="btn danger" onClick={(e)=>{e.stopPropagation();remove(r.id);}} onDoubleClick={(e)=>e.stopPropagation()}><Icon d={I.trash} size={16}/></button>}
+                    </td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+         )}
       </div>
       {modal!==null && <FormModal m={m} record={modal} onClose={()=>setModal(null)} onSave={save} data={data} currentUserEmail={currentUserEmail} role={role}/>}
       {dateFilter==="open" && <DateRangeModal onClose={()=>setDateFilter(null)} onExport={(from,to)=>{
@@ -1968,18 +2051,18 @@ function Dashboard({data,go,onRefresh,role}){
     return 1 + Math.ceil((firstThursday - target) / 604800000);
   };
 
-  // Determinar la fecha de referencia para las gráficas (la fecha del último cambio o rollback en la base de datos)
+  // Determinar la fecha de referencia para las gráficas (la fecha del último cambio o rollback en la base de datos, sin superar hoy)
   let referenceDate = null;
   mdcChanges.forEach(c => {
     if (c.fecha) {
       const d = pd(c.fecha);
-      if (d && (!referenceDate || d > referenceDate)) referenceDate = d;
+      if (d && d <= today && (!referenceDate || d > referenceDate)) referenceDate = d;
     }
   });
   (data.rollbacks || []).forEach(r => {
     if (r.fecha) {
       const d = pd(r.fecha);
-      if (d && (!referenceDate || d > referenceDate)) referenceDate = d;
+      if (d && d <= today && (!referenceDate || d > referenceDate)) referenceDate = d;
     }
   });
   if (!referenceDate) referenceDate = today;
